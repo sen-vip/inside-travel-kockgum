@@ -6,14 +6,18 @@ import { parseEdufineWorkbook } from './parser.js';
 import { calculateRoundTrip, getApiHealth, searchPlaces } from './api.js';
 import {
   clearDestinationStorage,
+  clearReviewStorage,
   loadDestinationMemory,
+  loadReviewMemory,
   loadRouteCache,
   loadWorkplace,
   saveDestinationMemory,
+  saveReviewMemory,
   saveRouteCache,
   saveWorkplace,
 } from './storage.js';
 import { exportResults, statusFor } from './exporter.js';
+import { buildReviewGroups, formatDuration, TRANSPORT_OPTIONS, transportLabel } from './review.js';
 
 const dom = Object.fromEntries([
   'api-status', 'reset-all', 'drop-zone', 'file-input', 'upload-error', 'analysis-section',
@@ -28,6 +32,9 @@ const dom = Object.fromEntries([
   'filter-needs-count', 'filter-resolved-count', 'filter-within-count', 'filter-boundary-count',
   'filter-failed-count', 'result-section', 'export-results', 'result-metrics', 'show-needs-only',
   'result-filters', 'result-search', 'paid-only', 'unpaid-empty-only', 'result-body', 'result-empty',
+  'clear-review-storage', 'review-metrics', 'review-filters', 'review-search',
+  'review-list-title', 'review-list-count', 'review-list', 'review-empty',
+  'review-detail', 'review-detail-empty', 'review-detail-content',
   'location-modal', 'modal-kicker', 'modal-title', 'close-modal', 'place-search-form',
   'place-search-input', 'candidate-loading', 'candidate-list', 'candidate-empty',
   'pending-location', 'pending-name', 'pending-address', 'confirm-location', 'toast',
@@ -39,11 +46,15 @@ const state = {
   workplace: loadWorkplace(),
   destinationMemory: loadDestinationMemory(),
   routeCache: loadRouteCache(),
+  reviewMemory: loadReviewMemory(),
   destinations: [],
   destinationFilter: 'all',
   destinationQuery: '',
   resultFilter: 'all',
   resultQuery: '',
+  reviewFilter: 'pending',
+  reviewQuery: '',
+  selectedReviewKey: null,
   paidOnly: false,
   unpaidEmptyOnly: false,
   expanded: new Set(),
@@ -438,6 +449,219 @@ function renderResults() {
   dom.export_results.disabled = !state.parsed;
 }
 
+function getReviewGroups() {
+  if (!state.parsed) return [];
+  return buildReviewGroups({
+    trips: state.parsed.trips,
+    destinations: state.destinations,
+    reviewMemory: state.reviewMemory,
+  });
+}
+
+function reviewStatusMeta(status) {
+  return {
+    pending: { label: '확인 필요', kind: 'amber' },
+    hold: { label: '보류', kind: 'coral' },
+    complete: { label: '검토 완료', kind: 'green' },
+    clear: { label: '일반', kind: 'slate' },
+  }[status] || { label: '확인 필요', kind: 'amber' };
+}
+
+function reviewFilterLabel(filter) {
+  return { pending: '확인 필요', hold: '보류', complete: '검토 완료', clear: '일반', all: '전체' }[filter] || '확인 필요';
+}
+
+function formatReviewDate(value) {
+  const [year, month, day] = String(value || '').split('-');
+  return year && month && day ? `${Number(month)}월 ${Number(day)}일` : value;
+}
+
+function timeRange(trip) {
+  const start = String(trip.startDate || '').slice(11, 16);
+  const end = String(trip.endDate || '').slice(11, 16);
+  return start && end ? `${start}~${end}` : '-';
+}
+
+function updateReviewMemory(groupKey, patch = {}) {
+  const group = getReviewGroups().find((item) => item.key === groupKey);
+  if (!group) return;
+  const current = state.reviewMemory[groupKey] || {};
+  state.reviewMemory[groupKey] = {
+    ...current,
+    signature: group.signature,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  saveReviewMemory(state.reviewMemory);
+}
+
+function setTransport(groupKey, tripId, value) {
+  const current = state.reviewMemory[groupKey] || {};
+  updateReviewMemory(groupKey, {
+    status: current.status === 'complete' ? 'pending' : current.status,
+    transports: { ...(current.transports || {}), [tripId]: value },
+  });
+}
+
+function reopenReviewGroups(groupKeys) {
+  let changed = false;
+  groupKeys.forEach((key) => {
+    const current = state.reviewMemory[key];
+    if (!current || current.status !== 'complete') return;
+    state.reviewMemory[key] = { ...current, status: 'pending', updatedAt: new Date().toISOString() };
+    changed = true;
+  });
+  if (changed) saveReviewMemory(state.reviewMemory);
+}
+
+function reopenAllReviews() {
+  reopenReviewGroups(new Set(getReviewGroups().map((group) => group.key)));
+}
+
+function reopenReviewsForDestination(destinationKey) {
+  if (!state.parsed) return;
+  const keys = new Set(state.parsed.trips
+    .filter((trip) => trip.normalizedDestination === destinationKey)
+    .map((trip) => `${String(trip.startDate || '').slice(0, 10)}|${trip.traveler}`));
+  reopenReviewGroups(keys);
+}
+
+function matchesReviewFilter(group) {
+  if (state.reviewFilter !== 'all' && group.status !== state.reviewFilter) return false;
+  const query = canonical(state.reviewQuery);
+  if (!query) return true;
+  const haystack = [
+    group.traveler,
+    group.date,
+    ...group.trips.flatMap((entry) => [entry.trip.destination, entry.trip.purpose]),
+  ].join(' ');
+  return canonical(haystack).includes(query);
+}
+
+function renderReviewMetrics(groups) {
+  const counts = {
+    all: groups.length,
+    pending: groups.filter((group) => group.status === 'pending').length,
+    complete: groups.filter((group) => group.status === 'complete').length,
+    hold: groups.filter((group) => group.status === 'hold').length,
+    clear: groups.filter((group) => group.status === 'clear').length,
+  };
+  dom.review_metrics.innerHTML = [
+    ['all', '전체 묶음', counts.all, ''],
+    ['pending', '확인 필요', counts.pending, 'attention'],
+    ['complete', '검토 완료', counts.complete, 'complete'],
+    ['hold', '보류', counts.hold, 'hold'],
+  ].map(([filter, label, value, kind]) => `
+    <button class="review-metric ${kind} ${state.reviewFilter === filter ? 'active' : ''}" data-review-filter="${filter}" type="button">
+      <span>${label}</span><strong>${value}</strong><small>묶음</small>
+    </button>
+  `).join('');
+}
+
+function renderReviewList(groups) {
+  const rows = groups.filter(matchesReviewFilter);
+  if (!rows.some((group) => group.key === state.selectedReviewKey)) {
+    state.selectedReviewKey = rows[0]?.key || null;
+  }
+  dom.review_list_title.textContent = reviewFilterLabel(state.reviewFilter);
+  dom.review_list_count.textContent = `${rows.length}묶음`;
+  dom.review_empty.classList.toggle('hidden', rows.length > 0);
+  dom.review_list.innerHTML = rows.map((group) => {
+    const status = reviewStatusMeta(group.status);
+    const active = group.key === state.selectedReviewKey;
+    const issueTags = group.issues.slice(0, 3).map((issue) => `<span>${escapeHtml(issue)}</span>`).join('');
+    const extra = group.issues.length > 3 ? `<span>+${group.issues.length - 3}</span>` : '';
+    return `
+      <button class="review-list-item ${active ? 'active' : ''} ${group.status}" data-action="select-review" data-group-key="${escapeHtml(group.key)}" type="button">
+        <div class="review-list-top">
+          <div><strong>${escapeHtml(group.traveler)}</strong><span>${escapeHtml(formatReviewDate(group.date))}</span></div>
+          <span class="review-status ${status.kind}">${status.label}</span>
+        </div>
+        <div class="review-list-summary">
+          <span>출장 ${group.trips.length}건</span><span>${formatDuration(group.totalDuration)}</span><span>${formatMoney(group.paidTotal)}</span>
+        </div>
+        <div class="review-issue-tags">${issueTags}${extra || (!group.issues.length ? '<span class="quiet">특이사항 없음</span>' : '')}</div>
+      </button>
+    `;
+  }).join('');
+}
+
+function reviewTripCard(group, entry, index) {
+  const { trip, destination, review } = entry;
+  const statusKind = review.boundary ? 'purple' : review.within ? 'amber' : review.routeReady ? 'blue' : 'coral';
+  const distanceLabel = review.routeReady ? formatDistance(review.distance) : '거리 미확인';
+  const transportButtons = TRANSPORT_OPTIONS.map((option) => `
+    <button class="transport-option ${review.transport === option.value ? 'active' : ''}" data-action="transport" data-group-key="${escapeHtml(group.key)}" data-trip-id="${escapeHtml(trip.id)}" data-value="${option.value}" type="button">${option.label}</button>
+  `).join('');
+  return `
+    <article class="review-trip-card">
+      <div class="review-trip-head">
+        <div><span class="trip-order">${index + 1}</span><strong>${escapeHtml(timeRange(trip))}</strong><small>${formatDuration(review.duration)}</small></div>
+        <span class="pill ${statusKind}">${escapeHtml(distanceLabel)}</span>
+      </div>
+      <div class="review-trip-place">
+        <strong title="${escapeHtml(trip.destination)}">${escapeHtml(trip.destination)}</strong>
+        <span title="${escapeHtml(trip.purpose)}">${escapeHtml(trip.purpose || '출장목적 없음')}</span>
+      </div>
+      <dl class="review-trip-facts">
+        <div><dt>확인된 장소</dt><dd>${escapeHtml(destination?.location?.name || '위치 확인 필요')}</dd></div>
+        <div><dt>기존 지급</dt><dd>${formatMoney(review.paid)}${trip.unpaid ? ` · 부지급 ${escapeHtml(trip.unpaid)}` : ''}</dd></div>
+      </dl>
+      <div class="transport-block">
+        <div class="transport-label"><strong>실제 이동수단</strong><span>${review.within ? '2km 이내 검토에 필요해요' : '필요할 때 입력하세요'}</span></div>
+        <div class="transport-options">${transportButtons}</div>
+      </div>
+      <div class="review-recommendation ${review.routeReady ? '' : 'warning'}">
+        <strong>${escapeHtml(review.headline)}</strong><span>${escapeHtml(review.note)}</span>
+      </div>
+      ${(!review.routeReady || review.boundary) ? `<button class="inline-location-button" data-action="review-location" data-destination-key="${escapeHtml(trip.normalizedDestination)}" type="button">${review.routeReady ? '출입구 위치 확인' : '출장지 위치 확인'}</button>` : ''}
+    </article>
+  `;
+}
+
+function renderReviewDetail(groups) {
+  const group = groups.find((item) => item.key === state.selectedReviewKey);
+  dom.review_detail_empty.classList.toggle('hidden', Boolean(group));
+  dom.review_detail_content.classList.toggle('hidden', !group);
+  if (!group) {
+    dom.review_detail_content.innerHTML = '';
+    return;
+  }
+  const status = reviewStatusMeta(group.status);
+  const issueTags = group.issues.map((issue) => `<span>${escapeHtml(issue)}</span>`).join('');
+  const sameDayNotice = group.trips.length > 1 ? `
+    <div class="same-day-notice"><strong>당일 합산 검토</strong><span>같은 날짜에 출장 ${group.trips.length}건이 있습니다. 각 건과 당일 전체 지급내역을 함께 확인해 주세요.</span></div>
+  ` : '';
+  const canComplete = group.unresolvedCount === 0 && group.transportMissingCount === 0;
+  dom.review_detail_content.innerHTML = `
+    <div class="review-detail-header">
+      <div><p>${escapeHtml(formatReviewDate(group.date))}</p><h3>${escapeHtml(group.traveler)}</h3><span>출장 ${group.trips.length}건 · 총 ${formatDuration(group.totalDuration)} · 기존 지급 ${formatMoney(group.paidTotal)}</span></div>
+      <span class="review-status large ${status.kind}">${status.label}</span>
+    </div>
+    <div class="review-detail-issues">${issueTags || '<span class="quiet">자동 확인 특이사항 없음</span>'}</div>
+    ${sameDayNotice}
+    <div class="review-trip-stack">${group.trips.map((entry, index) => reviewTripCard(group, entry, index)).join('')}</div>
+    <label class="review-note-field">
+      <span>검토 메모</span>
+      <textarea data-action="review-note" data-group-key="${escapeHtml(group.key)}" rows="3" placeholder="확인한 내용이나 보류 사유를 적어두세요.">${escapeHtml(group.note)}</textarea>
+    </label>
+    <div class="review-detail-actions">
+      ${group.status === 'complete' || group.status === 'hold' ? `<button class="button ghost" data-action="reopen-review" data-group-key="${escapeHtml(group.key)}" type="button">다시 검토</button>` : ''}
+      <button class="button secondary" data-action="hold-review" data-group-key="${escapeHtml(group.key)}" type="button">보류</button>
+      <button class="button primary" data-action="complete-review" data-group-key="${escapeHtml(group.key)}" type="button" ${canComplete ? '' : 'disabled'}>검토 완료</button>
+    </div>
+    ${canComplete ? '' : '<p class="completion-help">거리 미확인 건과 2km 이내 이동수단 미입력 건을 먼저 확인해 주세요.</p>'}
+    <p class="review-disclaimer">이 화면은 확인 순서를 정리하는 보조 도구입니다. 최종 지급 판단은 관련 지침과 기관 기준을 확인해 주세요.</p>
+  `;
+}
+
+function renderReviews() {
+  const groups = getReviewGroups();
+  renderReviewMetrics(groups);
+  renderReviewList(groups);
+  renderReviewDetail(groups);
+}
+
 function renderAll() {
   renderWorkplace();
   if (!state.parsed) return;
@@ -449,12 +673,15 @@ function renderAll() {
   dom.metric_destinations.textContent = state.parsed.summary.destinationCount;
   renderBatchPanel();
   renderDestinations();
+  renderReviews();
   renderResults();
   const hasCompleted = state.destinations.some((destination) => destination.routeStatus === 'complete');
-  if (state.busy) setStep(3);
-  else if (hasCompleted || state.lastBatchSummary) setStep(4);
-  else if (state.workplace) setStep(3);
-  else setStep(2);
+  const reviewGroups = getReviewGroups();
+  const unresolvedReviews = reviewGroups.filter((group) => group.requiresReview && (group.status === 'pending' || group.status === 'hold')).length;
+  if (state.busy) setStep(2);
+  else if (!hasCompleted && !state.lastBatchSummary) setStep(2);
+  else if (unresolvedReviews > 0) setStep(3);
+  else setStep(4);
 }
 
 async function handleFile(file) {
@@ -479,6 +706,9 @@ async function handleFile(file) {
     state.resultFilter = 'all';
     state.destinationQuery = '';
     state.resultQuery = '';
+    state.reviewFilter = 'pending';
+    state.reviewQuery = '';
+    state.selectedReviewKey = null;
     state.paidOnly = false;
     state.unpaidEmptyOnly = false;
     state.batchStarted = false;
@@ -985,11 +1215,13 @@ function confirmPendingLocation() {
     state.workplace = location;
     saveWorkplace(location);
     invalidateRoutes();
+    reopenAllReviews();
     showToast('근무지를 저장했어요. 이제 일괄검사를 시작할 수 있어요.');
   } else {
     const destination = getDestination(state.modal.key);
     if (destination) {
       saveDestinationLocation(destination, location, 'manual');
+      reopenReviewsForDestination(destination.key);
       showToast(`${destination.originalName} 위치를 확정했어요. ${destination.count}건에 함께 적용됩니다.`);
     }
   }
@@ -1007,6 +1239,9 @@ function resetCurrent() {
   state.batchStarted = false;
   state.lastBatchSummary = null;
   state.stopRequested = false;
+  state.selectedReviewKey = null;
+  state.reviewFilter = 'pending';
+  state.reviewQuery = '';
   dom.analysis_section.classList.add('hidden');
   showUploadError('');
   setProgress({ visible: false });
@@ -1062,6 +1297,7 @@ function bindEvents() {
       destination.route = null;
       destination.routeStatus = 'pending';
     });
+    reopenAllReviews();
     renderAll();
     showToast('저장된 근무지를 초기화했어요.');
   });
@@ -1079,8 +1315,18 @@ function bindEvents() {
       destination.routeStatus = 'pending';
       destination.searchError = '';
     });
+    reopenAllReviews();
     renderAll();
     showToast('저장된 출장지 정보를 초기화했어요.');
+  });
+  dom.clear_review_storage.addEventListener('click', () => {
+    if (!Object.keys(state.reviewMemory).length) return showToast('저장된 지급 검토가 없어요.');
+    if (!window.confirm('저장된 이동수단, 검토 상태와 메모를 모두 초기화할까요?')) return;
+    clearReviewStorage();
+    state.reviewMemory = {};
+    state.selectedReviewKey = null;
+    renderAll();
+    showToast('저장된 지급 검토를 초기화했어요.');
   });
 
   dom.bulk_inspect.addEventListener('click', () => runInspection());
@@ -1099,6 +1345,7 @@ function bindEvents() {
         destination.routeStatus = 'pending';
       }
     });
+    reopenAllReviews();
     runInspection({ forceRoutes: true });
   });
   dom.auto_search.addEventListener('click', autoSearchDestinations);
@@ -1136,6 +1383,76 @@ function bindEvents() {
     }
   });
 
+  const applyReviewFilter = (filter) => {
+    state.reviewFilter = filter;
+    state.selectedReviewKey = null;
+    dom.review_filters.querySelectorAll('button[data-review-filter]').forEach((button) => button.classList.toggle('active', button.dataset.reviewFilter === filter));
+    renderReviews();
+  };
+  dom.review_filters.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-review-filter]');
+    if (button) applyReviewFilter(button.dataset.reviewFilter);
+  });
+  dom.review_metrics.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-review-filter]');
+    if (button) applyReviewFilter(button.dataset.reviewFilter);
+  });
+  dom.review_search.addEventListener('input', (event) => {
+    state.reviewQuery = event.target.value;
+    state.selectedReviewKey = null;
+    renderReviews();
+  });
+  dom.review_list.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-action="select-review"]');
+    if (!button) return;
+    state.selectedReviewKey = button.dataset.groupKey;
+    renderReviews();
+  });
+  dom.review_detail_content.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    const groupKey = button.dataset.groupKey;
+    const action = button.dataset.action;
+    if (action === 'transport') {
+      setTransport(groupKey, button.dataset.tripId, button.dataset.value);
+      renderAll();
+      return;
+    }
+    if (action === 'review-location') {
+      openLocationModal('destination', button.dataset.destinationKey);
+      return;
+    }
+    if (action === 'complete-review') {
+      const group = getReviewGroups().find((item) => item.key === groupKey);
+      if (!group || group.unresolvedCount > 0 || group.transportMissingCount > 0) {
+        showToast('거리와 2km 이내 이동수단을 먼저 확인해 주세요.', 'error');
+        return;
+      }
+      updateReviewMemory(groupKey, { status: 'complete' });
+      state.selectedReviewKey = null;
+      showToast('검토 완료로 정리했어요.');
+      renderAll();
+      return;
+    }
+    if (action === 'hold-review') {
+      updateReviewMemory(groupKey, { status: 'hold' });
+      state.selectedReviewKey = null;
+      showToast('보류로 표시했어요.');
+      renderAll();
+      return;
+    }
+    if (action === 'reopen-review') {
+      updateReviewMemory(groupKey, { status: 'pending' });
+      showToast('다시 검토할 수 있게 열었어요.');
+      renderAll();
+    }
+  });
+  dom.review_detail_content.addEventListener('input', (event) => {
+    const field = event.target.closest('[data-action="review-note"]');
+    if (!field) return;
+    updateReviewMemory(field.dataset.groupKey, { note: field.value });
+  });
+
   dom.result_filters.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-filter]');
     if (!button) return;
@@ -1167,8 +1484,8 @@ function bindEvents() {
   });
   dom.export_results.addEventListener('click', () => {
     if (!state.parsed) return;
-    exportResults({ XLSX, trips: state.parsed.trips, destinations: state.destinations, workplace: state.workplace });
-    showToast('일괄검사 결과 엑셀을 만들었어요.');
+    exportResults({ XLSX, trips: state.parsed.trips, destinations: state.destinations, workplace: state.workplace, reviewMemory: state.reviewMemory });
+    showToast('지급 검토 결과 엑셀을 만들었어요.');
   });
 
   dom.close_modal.addEventListener('click', closeLocationModal);
