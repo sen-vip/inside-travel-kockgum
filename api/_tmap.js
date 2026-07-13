@@ -1,13 +1,33 @@
 const TMAP_BASE = 'https://apis.openapi.sk.com/tmap';
 
 export function getAppKey() {
-  return process.env.TMAP_APP_KEY || '';
+  let value = String(process.env.TMAP_APP_KEY || '').trim();
+  if (value.startsWith('TMAP_APP_KEY=')) value = value.slice('TMAP_APP_KEY='.length).trim();
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    value = value.slice(1, -1).trim();
+  }
+  return value;
 }
 
 export function json(res, status, body) {
   res.status(status).setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   res.end(JSON.stringify(body));
+}
+
+function providerMessage(data, status) {
+  return data?.error?.message
+    || data?.error?.msg
+    || data?.message
+    || data?.msg
+    || `TMAP API 오류 (${status})`;
+}
+
+function providerCode(data, status) {
+  return data?.error?.code
+    || data?.errorCode
+    || data?.code
+    || `TMAP_HTTP_${status}`;
 }
 
 export async function tmapFetch(path, options = {}) {
@@ -42,12 +62,21 @@ export async function tmapFetch(path, options = {}) {
     }
 
     if (!response.ok) {
-      const error = new Error(data?.error?.message || data?.message || `TMAP API 오류 (${response.status})`);
+      const error = new Error(providerMessage(data, response.status));
       error.status = response.status;
+      error.code = providerCode(data, response.status);
       error.details = data;
       throw error;
     }
     return data;
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const timeoutError = new Error('TMAP 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.');
+      timeoutError.code = 'TMAP_TIMEOUT';
+      timeoutError.status = 504;
+      throw timeoutError;
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }

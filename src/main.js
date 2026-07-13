@@ -399,13 +399,25 @@ async function handleFile(file) {
 async function checkApi() {
   try {
     const health = await getApiHealth();
-    state.apiConfigured = health.configured;
-    dom.api_status.className = `status-chip ${health.configured ? 'success' : 'warning'}`;
-    dom.api_status.innerHTML = `<span class="status-dot"></span>${health.configured ? '지도 API 연결됨' : '지도 API 키 필요'}`;
+    state.apiConfigured = Boolean(health.connected);
+    if (health.connected) {
+      dom.api_status.className = 'status-chip success';
+      dom.api_status.innerHTML = '<span class="status-dot"></span>지도 API 연결됨';
+      dom.api_status.title = '';
+    } else if (health.configured) {
+      dom.api_status.className = 'status-chip warning';
+      dom.api_status.innerHTML = '<span class="status-dot"></span>TMAP 사용 설정 확인';
+      dom.api_status.title = health.message || '앱 키 또는 상품 사용 신청을 확인해 주세요.';
+    } else {
+      dom.api_status.className = 'status-chip warning';
+      dom.api_status.innerHTML = '<span class="status-dot"></span>지도 API 키 필요';
+      dom.api_status.title = '';
+    }
   } catch {
     state.apiConfigured = false;
     dom.api_status.className = 'status-chip warning';
     dom.api_status.innerHTML = '<span class="status-dot"></span>지도 API 연결 전';
+    dom.api_status.title = '';
   }
 }
 
@@ -698,7 +710,16 @@ async function performPlaceSearch(query) {
     }
   } catch (error) {
     state.modal.candidates = [];
-    dom.candidate_empty.innerHTML = `<strong>${error.code === 'TMAP_APP_KEY_NOT_CONFIGURED' ? '지도 API 키가 필요해요.' : '장소 검색에 실패했어요.'}</strong><span>${escapeHtml(error.message || '잠시 후 다시 시도해 주세요.')}</span>`;
+    const authFailed = error.code === 'TMAP_AUTH_FAILED' || error.status === 401 || error.status === 403;
+    const title = error.code === 'TMAP_APP_KEY_NOT_CONFIGURED'
+      ? '지도 API 키가 필요해요.'
+      : authFailed
+        ? 'TMAP 사용 설정을 확인해 주세요.'
+        : '장소 검색에 실패했어요.';
+    const message = authFailed
+      ? 'Vercel의 TMAP_APP_KEY 값과 SK open API 앱의 TMAP 상품 사용 신청 상태를 확인해 주세요.'
+      : (error.message || '잠시 후 다시 시도해 주세요.');
+    dom.candidate_empty.innerHTML = `<strong>${title}</strong><span>${escapeHtml(message)}</span>`;
     dom.candidate_empty.classList.remove('hidden');
   } finally {
     dom.candidate_loading.classList.add('hidden');

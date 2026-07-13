@@ -72,6 +72,14 @@ function dedupe(items) {
   });
 }
 
+function normalizeTmapError(error) {
+  if (error.status === 401 || error.status === 403 || /AUTH|APPKEY|ACCESS|UNAUTHORIZED|FORBIDDEN/i.test(String(error.code || ''))) {
+    error.code = 'TMAP_AUTH_FAILED';
+    error.message = 'TMAP 앱 키가 유효하지 않거나, 해당 앱에 TMAP 상품 사용 신청이 완료되지 않았습니다.';
+  }
+  return error;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') return json(res, 405, { ok: false, message: 'GET 요청만 지원합니다.' });
 
@@ -80,20 +88,29 @@ export default async function handler(req, res) {
   if (!getAppKey()) return json(res, 503, { ok: false, code: 'TMAP_APP_KEY_NOT_CONFIGURED', message: 'TMAP_APP_KEY 환경변수가 설정되지 않았습니다.' });
 
   try {
-    const poiPath = `/pois?version=1&format=json&searchKeyword=${encodeURIComponent(query)}&resCoordType=WGS84GEO&reqCoordType=WGS84GEO&count=10&page=1&multiPoint=N`;
-    const requests = [tmapFetch(poiPath)];
+    const poiPath = `/pois?version=1&format=json&searchKeyword=${encodeURIComponent(query)}&searchType=all&resCoordType=WGS84GEO&reqCoordType=WGS84GEO&count=20&page=1&multiPoint=N`;
 
+    // 장소 검색은 필수 요청이다. 실패를 빈 검색 결과로 숨기지 않는다.
+    const poiData = await tmapFetch(poiPath);
+    const poi = parsePoi(poiData);
+
+    let geocode = [];
+    let geocodeWarning = '';
     if (looksLikeAddress(query)) {
-      requests.push(tmapFetch(`/geo/fullAddrGeo?version=1&format=json&coordType=WGS84GEO&fullAddr=${encodeURIComponent(query)}`));
+      try {
+        const geocodeData = await tmapFetch(`/geo/fullAddrGeo?version=1&format=json&coordType=WGS84GEO&fullAddr=${encodeURIComponent(query)}`);
+        geocode = parseGeocode(geocodeData, query);
+      } catch (error) {
+        // 장소 검색 결과가 있으면 주소 검색 실패만으로 전체 검색을 막지 않는다.
+        if (!poi.length) throw error;
+        geocodeWarning = error.message || '주소 검색에 실패했습니다.';
+      }
     }
 
-    const settled = await Promise.allSettled(requests);
-    const poi = settled[0].status === 'fulfilled' ? parsePoi(settled[0].value) : [];
-    const geocode = settled[1]?.status === 'fulfilled' ? parseGeocode(settled[1].value, query) : [];
-    const candidates = dedupe([...geocode, ...poi]).slice(0, 12);
-
-    return json(res, 200, { ok: true, query, candidates });
-  } catch (error) {
+    const candidates = dedupe([...geocode, ...poi]).slice(0, 20);
+    return json(res, 200, { ok: true, query, candidates, warning: geocodeWarning || undefined });
+  } catch (rawError) {
+    const error = normalizeTmapError(rawError);
     return json(res, error.status || 500, {
       ok: false,
       code: error.code || 'TMAP_SEARCH_FAILED',
