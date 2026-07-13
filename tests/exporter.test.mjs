@@ -29,7 +29,7 @@ try {
   const files = fs.readdirSync(temp).filter((name) => name.endsWith('.xlsx'));
   assert.equal(files.length, 1);
   const workbook = XLSX.readFile(path.join(temp, files[0]));
-  assert.deepEqual(workbook.SheetNames, ['출장별 결과', '출장지별 거리', '확인 필요']);
+  assert.deepEqual(workbook.SheetNames, ['출장별 검사결과', '출장지별 거리', '확인 필요']);
   const resultRows = XLSX.utils.sheet_to_json(workbook.Sheets['출장지별 거리']);
   assert.equal(resultRows.length, 3);
   console.log('Exporter test passed:', files[0]);

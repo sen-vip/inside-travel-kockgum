@@ -12,7 +12,7 @@ const HEADER_ALIASES = {
 
 const REQUIRED_HEADERS = ['startDate', 'endDate', 'category', 'traveler', 'destination'];
 const EXCLUDE_WORDS = /^(합\s*계|총\s*계|소\s*계)$/;
-const AMBIGUOUS_WORDS = /(인근|주변|일대|관내\s*일원|협의회\s*장소|학교\s*주변|산\s*주변|편의점\s*$)/;
+const AMBIGUOUS_WORDS = /(인근|주변|일대|관내\s*일원|협의회(?:\s*장소)?|학교\s*주변|산\s*주변|카페|커피|편의점|식당|음식점)/;
 
 export function cleanText(value) {
   if (value === null || value === undefined) return '';

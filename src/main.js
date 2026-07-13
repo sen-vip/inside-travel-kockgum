@@ -19,15 +19,18 @@ const dom = Object.fromEntries([
   'api-status', 'reset-all', 'drop-zone', 'file-input', 'upload-error', 'analysis-section',
   'file-name', 'file-detail', 'metric-trips', 'metric-travelers', 'metric-destinations',
   'set-workplace', 'workplace-empty', 'workplace-card', 'workplace-name', 'workplace-address',
-  'view-workplace', 'change-workplace', 'clear-workplace-storage', 'clear-destination-storage', 'auto-search', 'calculate-all', 'progress-panel',
-  'progress-title', 'progress-count', 'progress-bar', 'progress-detail', 'destination-filters',
+  'view-workplace', 'change-workplace', 'clear-workplace-storage', 'clear-destination-storage',
+  'batch-destination-count', 'bulk-inspect', 'stop-inspect', 'batch-readiness',
+  'batch-complete-actions', 'retry-incomplete', 'recalculate-all',
+  'auto-search', 'calculate-all', 'progress-panel', 'progress-title', 'progress-count',
+  'progress-bar', 'progress-detail', 'progress-subcounts', 'destination-filters',
   'destination-search', 'destination-body', 'destination-empty', 'filter-all-count',
   'filter-needs-count', 'filter-resolved-count', 'filter-within-count', 'filter-boundary-count',
-  'result-section', 'export-results', 'result-metrics', 'show-needs-only', 'result-filters',
-  'result-search', 'result-body', 'result-empty', 'location-modal', 'modal-kicker', 'modal-title',
-  'close-modal', 'place-search-form', 'place-search-input', 'candidate-loading', 'candidate-list',
-  'candidate-empty', 'pending-location', 'pending-name', 'pending-address', 'confirm-location',
-  'toast',
+  'filter-failed-count', 'result-section', 'export-results', 'result-metrics', 'show-needs-only',
+  'result-filters', 'result-search', 'paid-only', 'unpaid-empty-only', 'result-body', 'result-empty',
+  'location-modal', 'modal-kicker', 'modal-title', 'close-modal', 'place-search-form',
+  'place-search-input', 'candidate-loading', 'candidate-list', 'candidate-empty',
+  'pending-location', 'pending-name', 'pending-address', 'confirm-location', 'toast',
 ].map((id) => [id.replaceAll('-', '_'), document.getElementById(id)]));
 
 const state = {
@@ -41,9 +44,14 @@ const state = {
   destinationQuery: '',
   resultFilter: 'all',
   resultQuery: '',
+  paidOnly: false,
+  unpaidEmptyOnly: false,
   expanded: new Set(),
   busy: false,
+  stopRequested: false,
   apiConfigured: false,
+  batchStarted: false,
+  lastBatchSummary: null,
   modal: {
     mode: null,
     key: null,
@@ -76,10 +84,17 @@ function formatDistance(meters) {
   return `${(value / 1000).toFixed(2)}km`;
 }
 
+function formatMoney(value) {
+  const number = Number(value) || 0;
+  return number ? `${number.toLocaleString('ko-KR')}원` : '-';
+}
+
 function formatDateOnly(value) {
-  const text = String(value || '');
-  const date = text.slice(0, 10);
-  return date.replaceAll('-', '.');
+  return String(value || '').slice(0, 10).replaceAll('-', '.');
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function routeCacheKey(workplace, location) {
@@ -110,7 +125,7 @@ function showToast(message, type = 'success') {
   dom.toast.style.background = type === 'error' ? '#b94a48' : '#1f7a54';
   dom.toast.classList.remove('hidden');
   window.clearTimeout(showToast.timer);
-  showToast.timer = window.setTimeout(() => dom.toast.classList.add('hidden'), 2600);
+  showToast.timer = window.setTimeout(() => dom.toast.classList.add('hidden'), 3000);
 }
 
 function showUploadError(message = '') {
@@ -126,19 +141,26 @@ function setStep(step) {
   });
 }
 
-function setProgress({ visible, title = '', current = 0, total = 0, detail = '' }) {
+function setProgress({ visible, title = '', current = 0, total = 0, detail = '', subcounts = '', stopped = false }) {
   dom.progress_panel.classList.toggle('hidden', !visible);
+  dom.progress_panel.classList.toggle('stopped', stopped);
   if (!visible) return;
   dom.progress_title.textContent = title;
+  dom.progress_title.classList.toggle('working-text', state.busy && !stopped);
   dom.progress_count.textContent = `${current} / ${total}`;
-  dom.progress_bar.style.width = total ? `${Math.round((current / total) * 100)}%` : '0%';
+  dom.progress_bar.style.width = total ? `${Math.min(100, Math.round((current / total) * 100))}%` : '0%';
   dom.progress_detail.textContent = detail;
+  dom.progress_subcounts.textContent = subcounts;
 }
 
 function destinationStatus(destination) {
-  if (!destination.location) return { label: '위치 확인 필요', kind: 'coral', group: 'needs' };
+  if (!destination.location) {
+    if (destination.searchStatus === 'searching') return { label: '위치 검색 중', kind: 'blue', group: 'resolved' };
+    if (destination.searchStatus === 'error') return { label: '검색 실패', kind: 'coral', group: 'failed' };
+    return { label: '위치 확인 필요', kind: 'coral', group: 'needs' };
+  }
   if (destination.routeStatus === 'calculating') return { label: '거리 계산 중', kind: 'blue', group: 'resolved' };
-  if (destination.routeStatus === 'error') return { label: '거리 계산 실패', kind: 'coral', group: 'needs' };
+  if (destination.routeStatus === 'error') return { label: '거리 계산 실패', kind: 'coral', group: 'failed' };
   if (!destination.route) return { label: '위치 확인 완료', kind: 'green', group: 'resolved' };
 
   const total = destination.route.totalDistance;
@@ -151,29 +173,44 @@ function destinationStatus(destination) {
   };
 }
 
-function resultStatus(destination) {
+function resultStatus(destination, trip = null) {
   const base = statusFor(destination || {});
   const total = destination?.route?.totalDistance;
+  const within = Number.isFinite(total) && total <= 2000;
+  const over = Number.isFinite(total) && total > 2000;
+  const boundary = Number.isFinite(total) && total >= 1900 && total <= 2100;
+  const failed = destination?.searchStatus === 'error' || destination?.routeStatus === 'error';
+  const needs = !destination?.location || failed || !destination?.route;
+  const paid = Number(trip?.paymentAmount || trip?.travelAmount || 0) > 0;
+  const paymentReview = within && paid;
   return {
     ...base,
     total,
-    within: Number.isFinite(total) && total <= 2000,
-    over: Number.isFinite(total) && total > 2000,
-    boundary: Number.isFinite(total) && total >= 1900 && total <= 2100,
-    needs: !destination?.location || destination?.routeStatus === 'error' || !destination?.route,
+    within,
+    over,
+    boundary,
+    failed,
+    needs,
+    paid,
+    paymentReview,
+    note: paymentReview ? '지급내역 확인 필요 · 실제 교통비 발생 여부 확인' : base.note,
   };
 }
 
 function initializeDestinations(parsed) {
   state.destinations = parsed.destinations.map((item) => {
-    const remembered = state.destinationMemory[item.key]?.location || null;
+    const memory = state.destinationMemory[item.key] || {};
+    const remembered = memory.location || null;
     const destination = {
       ...item,
       location: remembered,
+      locationSource: remembered ? 'saved' : null,
       locationStatus: remembered ? 'resolved' : 'needs',
+      searchStatus: remembered ? 'resolved' : 'pending',
       route: null,
       routeStatus: 'pending',
       searchError: '',
+      lastCheckedAt: memory.savedAt || null,
     };
     const key = routeCacheKey(state.workplace, remembered);
     if (key && state.routeCache[key]) {
@@ -207,29 +244,78 @@ function renderWorkplace() {
   }
 }
 
-function renderDestinationCounts() {
-  const counts = { all: state.destinations.length, needs: 0, resolved: 0, within: 0, boundary: 0 };
+function summarizeDestinations() {
+  const summary = {
+    total: state.destinations.length,
+    located: 0,
+    unresolved: 0,
+    within: 0,
+    over: 0,
+    boundary: 0,
+    failed: 0,
+    routeComplete: 0,
+  };
   state.destinations.forEach((destination) => {
     const status = destinationStatus(destination);
-    if (!destination.location || destination.routeStatus === 'error') counts.needs += 1;
+    if (destination.location) summary.located += 1;
+    else summary.unresolved += 1;
+    if (destination.routeStatus === 'complete') summary.routeComplete += 1;
+    if (destination.route?.totalDistance <= 2000) summary.within += 1;
+    if (destination.route?.totalDistance > 2000) summary.over += 1;
+    if (status.group === 'boundary') summary.boundary += 1;
+    if (status.group === 'failed') summary.failed += 1;
+  });
+  return summary;
+}
+
+function renderBatchPanel() {
+  const summary = summarizeDestinations();
+  dom.batch_destination_count.textContent = summary.total;
+  const readiness = [];
+  if (!state.workplace) readiness.push('<span class="readiness-item warning">근무지 설정 필요</span>');
+  else readiness.push(`<span class="readiness-item success">근무지: ${escapeHtml(state.workplace.name)}</span>`);
+  if (!state.apiConfigured) readiness.push('<span class="readiness-item warning">지도 API 연결 확인 필요</span>');
+  else readiness.push('<span class="readiness-item success">지도 API 연결됨</span>');
+  readiness.push(`<span class="readiness-item">위치 확인 ${summary.located}/${summary.total}곳</span>`);
+  readiness.push(`<span class="readiness-item">거리 완료 ${summary.routeComplete}/${summary.total}곳</span>`);
+  dom.batch_readiness.innerHTML = readiness.join('');
+
+  dom.bulk_inspect.disabled = state.busy;
+  dom.bulk_inspect.textContent = state.lastBatchSummary && summary.routeComplete > 0 ? '일괄검사 다시 시작' : '일괄검사 시작';
+  dom.stop_inspect.classList.toggle('hidden', !state.busy);
+  dom.stop_inspect.disabled = state.stopRequested;
+  dom.stop_inspect.textContent = state.stopRequested ? '중지 중…' : '검사 중지';
+  dom.batch_complete_actions.classList.toggle('hidden', state.busy || (!state.batchStarted && summary.routeComplete === 0 && summary.failed === 0));
+  dom.retry_incomplete.disabled = state.busy || !state.destinations.some((item) => !item.location || item.searchStatus === 'error' || !item.route || item.routeStatus === 'error');
+  dom.recalculate_all.disabled = state.busy || !state.workplace;
+}
+
+function renderDestinationCounts() {
+  const counts = { all: state.destinations.length, needs: 0, resolved: 0, within: 0, boundary: 0, failed: 0 };
+  state.destinations.forEach((destination) => {
+    const status = destinationStatus(destination);
+    if (!destination.location && destination.searchStatus !== 'error') counts.needs += 1;
     if (destination.location) counts.resolved += 1;
     if (destination.route?.totalDistance <= 2000) counts.within += 1;
     if (status.group === 'boundary') counts.boundary += 1;
+    if (status.group === 'failed') counts.failed += 1;
   });
   dom.filter_all_count.textContent = counts.all;
   dom.filter_needs_count.textContent = counts.needs;
   dom.filter_resolved_count.textContent = counts.resolved;
   dom.filter_within_count.textContent = counts.within;
   dom.filter_boundary_count.textContent = counts.boundary;
+  dom.filter_failed_count.textContent = counts.failed;
 }
 
 function matchesDestinationFilter(destination) {
   const filter = state.destinationFilter;
   const status = destinationStatus(destination);
-  if (filter === 'needs' && destination.location && destination.routeStatus !== 'error') return false;
+  if (filter === 'needs' && destination.location) return false;
   if (filter === 'resolved' && !destination.location) return false;
   if (filter === 'within' && !(destination.route?.totalDistance <= 2000)) return false;
   if (filter === 'boundary' && status.group !== 'boundary') return false;
+  if (filter === 'failed' && status.group !== 'failed') return false;
   const query = canonical(state.destinationQuery);
   if (query && !canonical(`${destination.originalName} ${destination.location?.name || ''} ${destination.location?.address || ''}`).includes(query)) return false;
   return true;
@@ -243,24 +329,24 @@ function renderDestinations() {
     const status = destinationStatus(destination);
     const expanded = state.expanded.has(destination.key);
     const locationName = destination.location?.name || '아직 확인하지 않음';
-    const locationAddress = destination.location?.address || (destination.ambiguous ? '정확한 장소를 선택해 주세요.' : '자동 검색 또는 직접 선택');
+    const locationAddress = destination.location?.address || (destination.ambiguous ? '정확한 장소를 직접 선택해 주세요.' : '일괄검사에서 자동 검색');
+    const locationBadge = destination.locationSource === 'auto'
+      ? '<span class="auto-badge">자동 확인</span>'
+      : destination.locationSource === 'saved'
+        ? '<span class="saved-badge">저장 위치</span>'
+        : '';
     const distance = destination.route ? formatDistance(destination.route.totalDistance) : '-';
     const distanceSub = destination.route ? `갈 때 ${formatDistance(destination.route.outbound?.distance)} · 올 때 ${formatDistance(destination.route.inbound?.distance)}` : '보행 왕복거리';
     const actions = [
       `<button class="row-button ${destination.location ? '' : 'primary'}" data-action="select-location" data-key="${escapeHtml(destination.key)}" type="button">${destination.location ? '위치 변경' : '장소 선택'}</button>`,
     ];
-    if (destination.location && state.workplace && !destination.route) {
-      actions.push(`<button class="row-button primary" data-action="calculate-one" data-key="${escapeHtml(destination.key)}" type="button">거리 계산</button>`);
+    if (destination.location && state.workplace && (!destination.route || destination.routeStatus === 'error')) {
+      actions.push(`<button class="row-button primary" data-action="calculate-one" data-key="${escapeHtml(destination.key)}" type="button">${destination.routeStatus === 'error' ? '다시 계산' : '거리 계산'}</button>`);
     }
-    if (destination.location) {
-      actions.push(`<button class="row-button" data-action="view-map" data-key="${escapeHtml(destination.key)}" type="button">지도 보기</button>`);
-    }
-    if (destination.routeStatus === 'error') {
-      actions.push(`<button class="row-button primary" data-action="calculate-one" data-key="${escapeHtml(destination.key)}" type="button">다시 계산</button>`);
-    }
+    if (destination.location) actions.push(`<button class="row-button" data-action="view-map" data-key="${escapeHtml(destination.key)}" type="button">지도 보기</button>`);
 
     return `
-      <tr>
+      <tr class="${status.group === 'failed' ? 'failed-row' : ''}">
         <td>
           <div class="cell-title">
             <button data-action="toggle-details" data-key="${escapeHtml(destination.key)}" type="button" aria-label="출장 상세 ${expanded ? '접기' : '펼치기'}">${expanded ? '−' : '+'}</button>
@@ -268,9 +354,9 @@ function renderDestinations() {
           </div>
         </td>
         <td><strong>${destination.count}</strong>건</td>
-        <td><div class="place-cell"><strong>${escapeHtml(locationName)}</strong><span title="${escapeHtml(locationAddress)}">${escapeHtml(locationAddress)}</span></div></td>
+        <td><div class="place-cell"><div><strong>${escapeHtml(locationName)}</strong>${locationBadge}</div><span title="${escapeHtml(locationAddress)}">${escapeHtml(locationAddress)}</span></div></td>
         <td><div class="distance-cell"><strong>${distance}</strong><span>${distanceSub}</span></div></td>
-        <td><span class="pill ${status.kind}">${escapeHtml(status.label)}</span>${destination.searchError ? `<span class="cell-sub">${escapeHtml(destination.searchError)}</span>` : ''}</td>
+        <td><span class="pill ${status.kind}">${escapeHtml(status.label)}</span>${destination.searchError ? `<span class="cell-sub error-copy">${escapeHtml(destination.searchError)}</span>` : ''}</td>
         <td><div class="row-actions">${actions.join('')}</div></td>
       </tr>
       ${expanded ? `<tr class="detail-row"><td colspan="6"><div class="detail-box"><span><strong>출장자</strong> ${escapeHtml(destination.travelers.join(', '))}</span><span><strong>출장일</strong> ${escapeHtml(destination.dates.join(', '))}</span></div></td></tr>` : ''}
@@ -278,28 +364,35 @@ function renderDestinations() {
   }).join('');
 
   dom.auto_search.disabled = state.busy || !state.parsed;
-  dom.calculate_all.disabled = state.busy || !state.workplace || !state.destinations.some((item) => item.location && !item.route);
+  dom.calculate_all.disabled = state.busy || !state.parsed;
 }
 
 function allResultRows() {
   if (!state.parsed) return [];
   const destinationMap = new Map(state.destinations.map((destination) => [destination.key, destination]));
   const priority = (entry) => {
-    if (entry.status.needs) return 0;
-    if (entry.status.within) return entry.status.boundary ? 1 : 2;
-    if (entry.status.boundary) return 3;
-    return 4;
+    if (entry.status.failed || !entry.destination?.location) return 0;
+    if (entry.status.paymentReview) return 1;
+    if (entry.status.within) return entry.status.boundary ? 2 : 3;
+    if (entry.status.boundary) return 4;
+    if (entry.status.needs) return 5;
+    return 6;
   };
   return state.parsed.trips.map((trip) => {
     const destination = destinationMap.get(trip.normalizedDestination);
-    return { trip, destination, status: resultStatus(destination) };
+    return { trip, destination, status: resultStatus(destination, trip) };
   }).sort((a, b) => priority(a) - priority(b) || b.trip.startDate.localeCompare(a.trip.startDate));
 }
 
 function matchesResultFilter(entry) {
-  if (state.resultFilter === 'needs' && !(entry.status.needs || entry.status.within)) return false;
-  if (state.resultFilter === 'within' && !entry.status.within) return false;
-  if (state.resultFilter === 'over' && !entry.status.over) return false;
+  const filter = state.resultFilter;
+  if (filter === 'needs' && !(entry.status.needs || entry.status.within || entry.status.paymentReview)) return false;
+  if (filter === 'within' && !entry.status.within) return false;
+  if (filter === 'over' && !entry.status.over) return false;
+  if (filter === 'boundary' && !entry.status.boundary) return false;
+  if (filter === 'failed' && !entry.status.failed) return false;
+  if (state.paidOnly && !entry.status.paid) return false;
+  if (state.unpaidEmptyOnly && String(entry.trip.unpaid || '').trim()) return false;
   const query = canonical(state.resultQuery);
   if (query && !canonical(`${entry.trip.traveler} ${entry.trip.destination} ${entry.trip.purpose}`).includes(query)) return false;
   return true;
@@ -311,12 +404,14 @@ function renderResultMetrics(rows) {
   const over = rows.filter((row) => row.status.over).length;
   const boundary = rows.filter((row) => row.status.boundary).length;
   const needs = rows.filter((row) => row.status.needs).length;
+  const paymentReview = rows.filter((row) => row.status.paymentReview).length;
   dom.result_metrics.innerHTML = [
     ['총 출장', total, ''],
     ['왕복 2km 이내', within, 'emphasis'],
     ['왕복 2km 초과', over, ''],
     ['경계 구간', boundary, ''],
     ['위치·거리 확인', needs, 'alert'],
+    ['지급내역 확인', paymentReview, 'review'],
   ].map(([label, value, className]) => `<div class="result-metric ${className}"><span>${label}</span><strong>${value}건</strong></div>`).join('');
 }
 
@@ -327,14 +422,16 @@ function renderResults() {
   dom.result_empty.classList.toggle('hidden', rows.length > 0);
   dom.result_body.innerHTML = rows.map(({ trip, destination, status }) => {
     const pillKind = status.boundary ? 'purple' : (status.within ? 'amber' : (status.over ? 'blue' : 'coral'));
-    return `<tr>
+    const paidValue = Number(trip.paymentAmount || trip.travelAmount || 0);
+    return `<tr class="${status.paymentReview ? 'review-row' : ''}">
       <td>${escapeHtml(formatDateOnly(trip.startDate))}</td>
       <td><strong>${escapeHtml(trip.traveler)}</strong></td>
       <td><div class="ellipsis" title="${escapeHtml(trip.destination)}">${escapeHtml(trip.destination)}</div></td>
       <td><div class="ellipsis purpose" title="${escapeHtml(trip.purpose)}">${escapeHtml(trip.purpose)}</div></td>
       <td><strong>${destination?.route ? formatDistance(destination.route.totalDistance) : '-'}</strong></td>
       <td><span class="pill ${pillKind}">${escapeHtml(status.label)}</span></td>
-      <td>${escapeHtml(status.note)}</td>
+      <td><div class="payment-cell"><strong>${formatMoney(paidValue)}</strong>${trip.unpaid ? `<span>부지급: ${escapeHtml(trip.unpaid)}</span>` : ''}</div></td>
+      <td>${status.paymentReview ? '<span class="review-label">지급내역 확인 필요</span>' : ''}<span>${escapeHtml(status.note)}</span></td>
       <td><button class="copy-button" data-action="copy-result" data-trip-id="${escapeHtml(trip.id)}" type="button" aria-label="결과 복사">⧉</button></td>
     </tr>`;
   }).join('');
@@ -350,10 +447,14 @@ function renderAll() {
   dom.metric_trips.textContent = state.parsed.summary.tripCount;
   dom.metric_travelers.textContent = state.parsed.summary.travelerCount;
   dom.metric_destinations.textContent = state.parsed.summary.destinationCount;
+  renderBatchPanel();
   renderDestinations();
   renderResults();
-  const completed = state.destinations.some((destination) => destination.routeStatus === 'complete');
-  setStep(completed ? 3 : 2);
+  const hasCompleted = state.destinations.some((destination) => destination.routeStatus === 'complete');
+  if (state.busy) setStep(3);
+  else if (hasCompleted || state.lastBatchSummary) setStep(4);
+  else if (state.workplace) setStep(3);
+  else setStep(2);
 }
 
 async function handleFile(file) {
@@ -378,8 +479,15 @@ async function handleFile(file) {
     state.resultFilter = 'all';
     state.destinationQuery = '';
     state.resultQuery = '';
+    state.paidOnly = false;
+    state.unpaidEmptyOnly = false;
+    state.batchStarted = false;
+    state.lastBatchSummary = null;
     state.expanded.clear();
+    dom.paid_only.checked = false;
+    dom.unpaid_empty_only.checked = false;
     initializeDestinations(parsed);
+    setProgress({ visible: false });
     renderAll();
     dom.analysis_section.scrollIntoView({ behavior: 'smooth', block: 'start' });
     showToast(`관내출장 ${parsed.summary.tripCount}건을 불러왔어요.`);
@@ -419,19 +527,29 @@ async function checkApi() {
     dom.api_status.innerHTML = '<span class="status-dot"></span>지도 API 연결 전';
     dom.api_status.title = '';
   }
+  if (state.parsed) renderBatchPanel();
+  return state.apiConfigured;
 }
 
 function getDestination(key) {
   return state.destinations.find((destination) => destination.key === key);
 }
 
-function saveDestinationLocation(destination, location) {
+function saveDestinationLocation(destination, location, source = 'manual') {
   destination.location = location;
+  destination.locationSource = source;
   destination.locationStatus = 'resolved';
+  destination.searchStatus = 'resolved';
   destination.route = null;
   destination.routeStatus = 'pending';
   destination.searchError = '';
-  state.destinationMemory[destination.key] = { location, savedAt: new Date().toISOString() };
+  destination.lastCheckedAt = new Date().toISOString();
+  state.destinationMemory[destination.key] = {
+    location,
+    source,
+    originalName: destination.originalName,
+    savedAt: destination.lastCheckedAt,
+  };
   saveDestinationMemory(state.destinationMemory);
   const key = routeCacheKey(state.workplace, location);
   if (key && state.routeCache[key]) {
@@ -440,124 +558,253 @@ function saveDestinationLocation(destination, location) {
   }
 }
 
+function sameRegion(candidate, workplace) {
+  if (!workplace?.address || !candidate?.address) return true;
+  const workTokens = String(workplace.address).match(/[가-힣]+(?:특별시|광역시|특별자치시|도|시|구)/g) || [];
+  const candidateAddress = String(candidate.address || '');
+  if (!workTokens.length) return true;
+  return workTokens.slice(0, 1).some((token) => candidateAddress.includes(token));
+}
+
 function confidenceCandidate(destination, candidates) {
   if (!candidates.length) return null;
   if (destination.extractedAddress) {
-    return candidates.find((candidate) => candidate.source === 'geocode') || (candidates.length === 1 ? candidates[0] : null);
+    const geocodes = candidates.filter((candidate) => candidate.source === 'geocode');
+    if (geocodes.length === 1) return geocodes[0];
+    if (candidates.length === 1) return candidates[0];
+    return null;
   }
   const target = canonical(destination.originalName);
-  const exact = candidates.filter((candidate) => canonical(candidate.name) === target);
+  const exact = candidates.filter((candidate) => canonical(candidate.name) === target && sameRegion(candidate, state.workplace));
   if (exact.length === 1) return exact[0];
-  if (candidates.length === 1) return candidates[0];
+  const strong = candidates.filter((candidate) => {
+    const name = canonical(candidate.name);
+    return name && target && (name.startsWith(target) || target.startsWith(name)) && Math.min(name.length, target.length) >= 4;
+  });
+  if (strong.length === 1) return strong[0];
+  if (candidates.length === 1 && target.length >= 4) {
+    const onlyName = canonical(candidates[0].name);
+    if (onlyName.includes(target) || target.includes(onlyName)) return candidates[0];
+  }
   return null;
 }
 
-async function autoSearchDestinations() {
-  if (state.busy) return;
-  const targets = state.destinations.filter((destination) => !destination.location && !destination.ambiguous);
-  if (!targets.length) {
-    showToast('자동으로 찾을 출장지가 없어요.');
-    return;
+function validateInspectionPrerequisites() {
+  if (!state.parsed) {
+    showToast('에듀파인 관내여비 파일을 먼저 가져와 주세요.', 'error');
+    return false;
   }
-
-  state.busy = true;
-  let resolved = 0;
-  setProgress({ visible: true, title: '출장지 위치를 찾고 있어요', current: 0, total: targets.length, detail: '' });
-  renderDestinations();
-
-  for (let index = 0; index < targets.length; index += 1) {
-    const destination = targets[index];
-    setProgress({ visible: true, title: '출장지 위치를 찾고 있어요', current: index, total: targets.length, detail: destination.originalName });
-    try {
-      const data = await searchPlaces(destination.searchQuery);
-      const candidate = confidenceCandidate(destination, data.candidates || []);
-      if (candidate) {
-        saveDestinationLocation(destination, candidate);
-        resolved += 1;
-      } else {
-        destination.searchError = data.candidates?.length ? '검색 결과 선택 필요' : '검색 결과 없음';
-      }
-    } catch (error) {
-      destination.searchError = error.code === 'TMAP_APP_KEY_NOT_CONFIGURED' ? '지도 API 키 필요' : '자동 검색 실패';
-      if (error.code === 'TMAP_APP_KEY_NOT_CONFIGURED') break;
-    }
-    setProgress({ visible: true, title: '출장지 위치를 찾고 있어요', current: index + 1, total: targets.length, detail: destination.originalName });
-    renderDestinations();
+  if (!state.workplace) {
+    showToast('근무지를 먼저 설정해 주세요.', 'error');
+    openLocationModal('workplace');
+    return false;
   }
-
-  state.busy = false;
-  setProgress({ visible: false });
-  renderAll();
-  showToast(`${resolved}곳을 자동 확인했어요. 나머지는 직접 선택해 주세요.`);
+  if (!state.apiConfigured) {
+    showToast('지도 API 연결을 확인해 주세요.', 'error');
+    checkApi();
+    return false;
+  }
+  return true;
 }
 
-async function calculateDestination(destination, updateProgress = null) {
+async function searchDestination(destination) {
+  if (destination.ambiguous) {
+    destination.searchStatus = 'needs';
+    destination.searchError = '모호한 장소라 자동 확정하지 않았어요.';
+    return false;
+  }
+  destination.searchStatus = 'searching';
+  destination.searchError = '';
+  try {
+    const data = await searchPlaces(destination.searchQuery);
+    const candidates = data.candidates || [];
+    const candidate = confidenceCandidate(destination, candidates);
+    if (candidate) {
+      saveDestinationLocation(destination, candidate, 'auto');
+      return true;
+    }
+    destination.searchStatus = 'needs';
+    destination.searchError = candidates.length ? '검색 결과를 직접 선택해 주세요.' : '검색 결과가 없어요.';
+    return false;
+  } catch (error) {
+    destination.searchStatus = 'error';
+    destination.searchError = error.code === 'TMAP_APP_KEY_NOT_CONFIGURED'
+      ? '지도 API 키가 필요해요.'
+      : error.code === 'TMAP_AUTH_FAILED'
+        ? 'TMAP 상품 사용 설정을 확인해 주세요.'
+        : (error.message || '자동 검색에 실패했어요.');
+    return false;
+  }
+}
+
+async function calculateDestination(destination, { force = false } = {}) {
   if (!state.workplace || !destination.location) return false;
   const key = routeCacheKey(state.workplace, destination.location);
-  if (state.routeCache[key]) {
+  if (!force && state.routeCache[key]) {
     destination.route = state.routeCache[key];
     destination.routeStatus = 'complete';
+    destination.searchError = '';
     return true;
   }
 
   destination.routeStatus = 'calculating';
-  renderDestinations();
   try {
     const route = compactRoute(await calculateRoundTrip(
       { ...state.workplace, name: state.workplace.name || '근무지' },
       { ...destination.location, name: destination.location.name || destination.originalName },
     ));
+    if (!Number.isFinite(route.outbound?.distance) || !Number.isFinite(route.inbound?.distance)) {
+      throw new Error('가는 길과 오는 길을 모두 확인하지 못했어요.');
+    }
     destination.route = route;
     destination.routeStatus = 'complete';
     destination.searchError = '';
-    state.routeCache[key] = route;
+    state.routeCache[key] = { ...route, cachedAt: new Date().toISOString() };
     saveRouteCache(state.routeCache);
     return true;
   } catch (error) {
+    destination.route = null;
     destination.routeStatus = 'error';
-    destination.searchError = error.code === 'TMAP_APP_KEY_NOT_CONFIGURED' ? '지도 API 키 필요' : (error.message || '거리 계산 실패');
+    destination.searchError = error.code === 'TMAP_APP_KEY_NOT_CONFIGURED'
+      ? '지도 API 키가 필요해요.'
+      : error.code === 'TMAP_AUTH_FAILED'
+        ? 'TMAP 상품 사용 설정을 확인해 주세요.'
+        : (error.message || '거리 계산에 실패했어요.');
     return false;
-  } finally {
-    updateProgress?.();
   }
 }
 
-async function calculateAllDestinations() {
-  if (state.busy) return;
-  if (!state.workplace) {
-    showToast('거리 계산을 위해 근무지를 먼저 설정해 주세요.', 'error');
-    openLocationModal('workplace');
-    return;
-  }
-  const targets = state.destinations.filter((destination) => destination.location && (!destination.route || destination.routeStatus === 'error'));
-  if (!targets.length) {
-    showToast('계산할 출장지가 없어요.');
-    return;
-  }
+function inspectionSubcounts(searchDone, searchTotal, routeDone, routeTotal) {
+  return `출장지 위치 확인 ${searchDone}/${searchTotal}곳 · 왕복거리 계산 ${routeDone}/${routeTotal}곳`;
+}
+
+async function runInspection({ searchOnly = false, routeOnly = false, forceRoutes = false } = {}) {
+  if (state.busy || !validateInspectionPrerequisites()) return;
 
   state.busy = true;
-  let completed = 0;
-  let success = 0;
-  setProgress({ visible: true, title: '보행 왕복거리를 계산하고 있어요', current: 0, total: targets.length, detail: '' });
-  renderDestinations();
+  state.stopRequested = false;
+  state.batchStarted = true;
+  let searchDone = 0;
+  let searchResolved = 0;
+  let routeDone = 0;
+  let routeSuccess = 0;
 
-  for (let index = 0; index < targets.length; index += 2) {
-    const batch = targets.slice(index, index + 2);
-    await Promise.all(batch.map(async (destination) => {
-      const ok = await calculateDestination(destination, () => {
-        completed += 1;
-        setProgress({ visible: true, title: '보행 왕복거리를 계산하고 있어요', current: completed, total: targets.length, detail: destination.originalName });
+  const searchTargets = routeOnly ? [] : state.destinations.filter((destination) => !destination.location);
+  let routeTargets = [];
+  const initialTotal = Math.max(1, searchTargets.length);
+  setProgress({
+    visible: true,
+    title: searchTargets.length ? '출장지 위치를 확인하고 있어요' : '왕복거리 계산을 준비하고 있어요',
+    current: 0,
+    total: initialTotal,
+    detail: '',
+    subcounts: inspectionSubcounts(0, searchTargets.length, 0, 0),
+  });
+  renderAll();
+
+  for (const destination of searchTargets) {
+    if (state.stopRequested) break;
+    setProgress({
+      visible: true,
+      title: '출장지 위치를 확인하고 있어요',
+      current: searchDone,
+      total: Math.max(1, searchTargets.length),
+      detail: destination.originalName,
+      subcounts: inspectionSubcounts(searchDone, searchTargets.length, routeDone, 0),
+    });
+    const resolved = await searchDestination(destination);
+    searchDone += 1;
+    if (resolved) searchResolved += 1;
+    setProgress({
+      visible: true,
+      title: '출장지 위치를 확인하고 있어요',
+      current: searchDone,
+      total: Math.max(1, searchTargets.length),
+      detail: destination.originalName,
+      subcounts: inspectionSubcounts(searchDone, searchTargets.length, routeDone, 0),
+    });
+    renderDestinations();
+    renderBatchPanel();
+    await delay(120);
+  }
+
+  if (!state.stopRequested && !searchOnly) {
+    routeTargets = state.destinations.filter((destination) => destination.location && (forceRoutes || !destination.route || destination.routeStatus === 'error'));
+    for (const destination of routeTargets) {
+      if (state.stopRequested) break;
+      setProgress({
+        visible: true,
+        title: '보행 왕복거리를 계산하고 있어요',
+        current: routeDone,
+        total: Math.max(1, routeTargets.length),
+        detail: destination.originalName,
+        subcounts: inspectionSubcounts(searchDone, searchTargets.length, routeDone, routeTargets.length),
       });
-      if (ok) success += 1;
-    }));
-    renderAll();
+      const success = await calculateDestination(destination, { force: forceRoutes });
+      routeDone += 1;
+      if (success) routeSuccess += 1;
+      setProgress({
+        visible: true,
+        title: '보행 왕복거리를 계산하고 있어요',
+        current: routeDone,
+        total: Math.max(1, routeTargets.length),
+        detail: destination.originalName,
+        subcounts: inspectionSubcounts(searchDone, searchTargets.length, routeDone, routeTargets.length),
+      });
+      renderAll();
+      await delay(140);
+    }
   }
 
   state.busy = false;
-  setProgress({ visible: false });
+  const stopped = state.stopRequested;
+  state.stopRequested = false;
+  const summary = summarizeDestinations();
+  state.lastBatchSummary = {
+    stopped,
+    searchDone,
+    searchResolved,
+    routeDone,
+    routeSuccess,
+    completedAt: new Date().toISOString(),
+  };
+
+  if (stopped) {
+    setProgress({
+      visible: true,
+      title: '일괄검사를 중지했어요',
+      current: searchDone + routeDone,
+      total: Math.max(1, searchTargets.length + routeTargets.length),
+      detail: `완료된 위치 ${searchDone}곳과 거리 ${routeDone}곳의 결과는 유지됩니다.`,
+      subcounts: inspectionSubcounts(searchDone, searchTargets.length, routeDone, routeTargets.length),
+      stopped: true,
+    });
+    showToast('일괄검사를 중지했어요. 완료된 결과는 유지됩니다.');
+  } else {
+    setProgress({
+      visible: true,
+      title: searchOnly ? '출장지 위치 확인을 마쳤어요' : '일괄검사가 완료됐어요',
+      current: searchTargets.length + routeTargets.length,
+      total: Math.max(1, searchTargets.length + routeTargets.length),
+      detail: `거리 완료 ${summary.routeComplete}곳 · 위치 확인 필요 ${summary.unresolved}곳 · 실패 ${summary.failed}곳`,
+      subcounts: inspectionSubcounts(searchDone, searchTargets.length, routeDone, routeTargets.length),
+    });
+    showToast(searchOnly
+      ? `${searchResolved}곳의 위치를 자동 확인했어요.`
+      : `${routeSuccess}곳의 왕복거리 계산을 마쳤어요.`);
+  }
   renderAll();
-  dom.result_section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  showToast(`${success}곳의 왕복거리 계산을 마쳤어요.`);
+  if (!searchOnly && (routeDone > 0 || summary.routeComplete > 0)) {
+    dom.result_section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function autoSearchDestinations() {
+  runInspection({ searchOnly: true });
+}
+
+function calculateAllDestinations() {
+  runInspection({ routeOnly: true });
 }
 
 function ensureMap() {
@@ -641,6 +888,7 @@ async function openLocationModal(mode, key = null) {
   state.modal.candidates = [];
   state.modal.pending = null;
   dom.candidate_list.innerHTML = '';
+  dom.candidate_empty.innerHTML = '<strong>장소를 검색해 주세요.</strong><span>예: 대청중학교 또는 정확한 도로명주소</span>';
   dom.candidate_empty.classList.remove('hidden');
   dom.pending_location.classList.add('hidden');
 
@@ -696,7 +944,11 @@ function renderCandidates() {
 
 async function performPlaceSearch(query) {
   const value = String(query || '').trim();
-  if (value.length < 2) return;
+  if (value.length < 2) {
+    dom.candidate_empty.innerHTML = '<strong>두 글자 이상 입력해 주세요.</strong><span>학교명 전체 또는 도로명주소로 검색하면 더 정확해요.</span>';
+    dom.candidate_empty.classList.remove('hidden');
+    return;
+  }
   dom.candidate_loading.classList.remove('hidden');
   dom.candidate_empty.classList.add('hidden');
   dom.candidate_list.innerHTML = '';
@@ -733,12 +985,12 @@ function confirmPendingLocation() {
     state.workplace = location;
     saveWorkplace(location);
     invalidateRoutes();
-    showToast('근무지를 저장했어요.');
+    showToast('근무지를 저장했어요. 이제 일괄검사를 시작할 수 있어요.');
   } else {
     const destination = getDestination(state.modal.key);
     if (destination) {
-      saveDestinationLocation(destination, location);
-      showToast(`${destination.originalName} 위치를 저장했어요.`);
+      saveDestinationLocation(destination, location, 'manual');
+      showToast(`${destination.originalName} 위치를 확정했어요. ${destination.count}건에 함께 적용됩니다.`);
     }
   }
   closeLocationModal();
@@ -752,8 +1004,12 @@ function resetCurrent() {
   state.fileName = '';
   state.destinations = [];
   state.expanded.clear();
+  state.batchStarted = false;
+  state.lastBatchSummary = null;
+  state.stopRequested = false;
   dom.analysis_section.classList.add('hidden');
   showUploadError('');
+  setProgress({ visible: false });
   setStep(1);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -766,6 +1022,7 @@ function copyTripResult(tripId) {
     `출장지: ${entry.trip.destination}`,
     `왕복 보행거리: ${entry.destination?.route ? formatDistance(entry.destination.route.totalDistance) : '미확인'}`,
     `판정: ${entry.status.label}`,
+    `기존 지급금액: ${formatMoney(entry.trip.paymentAmount || entry.trip.travelAmount)}`,
     `확인사항: ${entry.status.note}`,
   ].join('\n');
   navigator.clipboard.writeText(text).then(() => showToast('결과가 복사됐어요.')).catch(() => showToast('복사하지 못했어요.', 'error'));
@@ -815,13 +1072,34 @@ function bindEvents() {
     state.routeCache = {};
     state.destinations.forEach((destination) => {
       destination.location = null;
+      destination.locationSource = null;
       destination.locationStatus = 'needs';
+      destination.searchStatus = 'pending';
       destination.route = null;
       destination.routeStatus = 'pending';
       destination.searchError = '';
     });
     renderAll();
     showToast('저장된 출장지 정보를 초기화했어요.');
+  });
+
+  dom.bulk_inspect.addEventListener('click', () => runInspection());
+  dom.stop_inspect.addEventListener('click', () => {
+    if (!state.busy) return;
+    state.stopRequested = true;
+    dom.stop_inspect.disabled = true;
+    dom.stop_inspect.textContent = '중지 중…';
+  });
+  dom.retry_incomplete.addEventListener('click', () => runInspection());
+  dom.recalculate_all.addEventListener('click', () => {
+    if (!window.confirm('저장된 거리 결과를 무시하고 위치가 확인된 출장지를 모두 다시 계산할까요?')) return;
+    state.destinations.forEach((destination) => {
+      if (destination.location) {
+        destination.route = null;
+        destination.routeStatus = 'pending';
+      }
+    });
+    runInspection({ forceRoutes: true });
   });
   dom.auto_search.addEventListener('click', autoSearchDestinations);
   dom.calculate_all.addEventListener('click', calculateAllDestinations);
@@ -848,12 +1126,13 @@ function bindEvents() {
     } else if (button.dataset.action === 'select-location' || button.dataset.action === 'view-map') {
       openLocationModal('destination', key);
     } else if (button.dataset.action === 'calculate-one' && destination) {
-      if (!state.workplace) return openLocationModal('workplace');
+      if (!validateInspectionPrerequisites()) return;
       state.busy = true;
-      await calculateDestination(destination);
+      renderAll();
+      const ok = await calculateDestination(destination, { force: destination.routeStatus === 'error' });
       state.busy = false;
       renderAll();
-      showToast(destination.routeStatus === 'complete' ? '왕복거리를 계산했어요.' : '거리 계산에 실패했어요.', destination.routeStatus === 'complete' ? 'success' : 'error');
+      showToast(ok ? '왕복거리를 계산했어요.' : '거리 계산에 실패했어요.', ok ? 'success' : 'error');
     }
   });
 
@@ -866,6 +1145,14 @@ function bindEvents() {
   });
   dom.result_search.addEventListener('input', (event) => {
     state.resultQuery = event.target.value;
+    renderResults();
+  });
+  dom.paid_only.addEventListener('change', (event) => {
+    state.paidOnly = event.target.checked;
+    renderResults();
+  });
+  dom.unpaid_empty_only.addEventListener('change', (event) => {
+    state.unpaidEmptyOnly = event.target.checked;
     renderResults();
   });
   dom.show_needs_only.addEventListener('click', () => {
@@ -881,7 +1168,7 @@ function bindEvents() {
   dom.export_results.addEventListener('click', () => {
     if (!state.parsed) return;
     exportResults({ XLSX, trips: state.parsed.trips, destinations: state.destinations, workplace: state.workplace });
-    showToast('결과 엑셀을 만들었어요.');
+    showToast('일괄검사 결과 엑셀을 만들었어요.');
   });
 
   dom.close_modal.addEventListener('click', closeLocationModal);

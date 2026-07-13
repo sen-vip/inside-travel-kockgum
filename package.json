@@ -1,9 +1,9 @@
 {
   "name": "inside-travel-kockgum",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "에듀파인 관내여비 내역의 출장지를 정리하고 왕복 2km 기준 확인 대상을 골라주는 웹앱",
+  "description": "에듀파인 관내여비 내역을 일괄검사해 왕복 2km 기준 확인 대상을 골라주는 웹앱",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
