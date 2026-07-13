@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="에듀파인 관내여비 내역의 왕복 2km 확인 대상을 찾아주는 업무 보조 웹앱" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>관내여비 콕검</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+</head>
+<body>
+  <div id="app">
+    <header class="app-header">
+      <div class="header-inner">
+        <a class="brand" href="#top" aria-label="관내여비 콕검 처음으로">
+          <span class="brand-mark" aria-hidden="true">✓</span>
+          <span>관내여비 콕검</span>
+        </a>
+        <div class="header-actions">
+          <span id="api-status" class="status-chip neutral"><span class="status-dot"></span>지도 API 확인 중</span>
+          <button id="reset-all" class="button ghost small" type="button">새로 시작</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="top" class="page-shell">
+      <section class="hero">
+        <p class="eyebrow">급여담당자용 관내출장 거리 점검</p>
+        <h1>전체를 보지 말고,<br /><span>확인할 출장만 콕.</span></h1>
+        <p class="hero-copy">에듀파인 관내여비 내역을 불러오면 출장지를 묶고, 근무지와의 보행 왕복거리를 계산해 2km 이내 확인 대상을 찾아드려요.</p>
+      </section>
+
+      <nav class="stepper" aria-label="작업 단계">
+        <div class="step active" data-step="1"><span>1</span><strong>파일 가져오기</strong></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="2"><span>2</span><strong>출장지 확인</strong></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="3"><span>3</span><strong>결과 확인</strong></div>
+      </nav>
+
+      <section id="upload-section" class="surface upload-surface">
+        <div class="section-heading compact">
+          <div>
+            <p class="section-kicker">1. 에듀파인 파일</p>
+            <h2>관내여비 내역을 가져오세요</h2>
+          </div>
+          <span class="support-label">.xls · .xlsx 지원</span>
+        </div>
+
+        <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="엑셀 파일 선택">
+          <div class="drop-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>
+          </div>
+          <strong>파일을 놓거나 눌러서 선택하세요</strong>
+          <span>에듀파인에서 출력한 관내여비 내역 파일</span>
+          <input id="file-input" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
+        </div>
+
+        <div class="privacy-note">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-2.9 8.4-7 10-4.1-1.6-7-5.4-7-10V6l7-3Z" /><path d="m9 12 2 2 4-4" /></svg>
+          <span>파일 내용은 브라우저에서만 읽습니다. 지도 API에는 장소 검색어와 좌표만 전달하며 출장자명·출장목적·금액은 보내지 않습니다.</span>
+        </div>
+        <div id="upload-error" class="inline-alert error hidden" role="alert"></div>
+      </section>
+
+      <section id="analysis-section" class="hidden">
+        <div class="summary-strip">
+          <div class="file-summary">
+            <span class="file-icon">XLS</span>
+            <div><strong id="file-name">파일명</strong><span id="file-detail">분석 완료</span></div>
+          </div>
+          <div class="metric"><span>출장 건수</span><strong id="metric-trips">0</strong></div>
+          <div class="metric"><span>출장자</span><strong id="metric-travelers">0</strong></div>
+          <div class="metric"><span>출장지</span><strong id="metric-destinations">0</strong></div>
+        </div>
+
+        <section class="surface workplace-surface">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">2. 거리 계산 기준</p>
+              <h2>근무지를 설정하세요</h2>
+              <p>실제 출장 출발 위치에 가까운 학교 정문이나 주 출입구를 선택해 주세요.</p>
+            </div>
+            <button id="set-workplace" class="button primary" type="button">근무지 검색</button>
+          </div>
+          <div id="workplace-empty" class="empty-inline">
+            <span class="pin-symbol">⌖</span>
+            <div><strong>저장된 근무지가 없어요</strong><span>한 번 설정하면 다음 파일에서도 그대로 사용합니다.</span></div>
+          </div>
+          <div id="workplace-card" class="location-card hidden">
+            <div class="location-main">
+              <span class="location-pin">출발</span>
+              <div><strong id="workplace-name"></strong><span id="workplace-address"></span></div>
+            </div>
+            <div class="location-actions">
+              <button class="button ghost small" id="view-workplace" type="button">지도 보기</button>
+              <button class="button secondary small" id="change-workplace" type="button">변경</button>
+            </div>
+          </div>
+          <div class="storage-actions">
+            <button id="clear-workplace-storage" class="text-button" type="button">저장된 근무지 초기화</button>
+            <button id="clear-destination-storage" class="text-button" type="button">저장된 출장지 정보 초기화</button>
+          </div>
+        </section>
+
+        <section class="surface destination-surface">
+          <div class="section-heading destination-heading">
+            <div>
+              <p class="section-kicker">출장지 묶음</p>
+              <h2>불명확한 장소만 확인하세요</h2>
+              <p>같은 출장지는 한 번만 확인하고, 저장된 위치는 다음 업로드에도 다시 사용합니다.</p>
+            </div>
+            <div class="heading-actions">
+              <button id="auto-search" class="button secondary" type="button">위치 자동 찾기</button>
+              <button id="calculate-all" class="button primary" type="button">거리 계산하기</button>
+            </div>
+          </div>
+
+          <div id="progress-panel" class="progress-panel hidden">
+            <div class="progress-copy"><strong id="progress-title">처리 중</strong><span id="progress-count">0 / 0</span></div>
+            <div class="progress-track"><div id="progress-bar" class="progress-bar"></div></div>
+            <p id="progress-detail"></p>
+          </div>
+
+          <div class="toolbar">
+            <div id="destination-filters" class="segmented" role="group" aria-label="출장지 상태 필터">
+              <button class="active" data-filter="all" type="button">전체 <span id="filter-all-count">0</span></button>
+              <button data-filter="needs" type="button">확인 필요 <span id="filter-needs-count">0</span></button>
+              <button data-filter="resolved" type="button">위치 확인 <span id="filter-resolved-count">0</span></button>
+              <button data-filter="within" type="button">2km 이내 <span id="filter-within-count">0</span></button>
+              <button data-filter="boundary" type="button">경계 구간 <span id="filter-boundary-count">0</span></button>
+            </div>
+            <label class="search-field small-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input id="destination-search" type="search" placeholder="출장지 검색" />
+            </label>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table destination-table">
+              <thead><tr><th>출장지</th><th>건수</th><th>확인된 장소</th><th>왕복거리</th><th>상태</th><th class="action-column">작업</th></tr></thead>
+              <tbody id="destination-body"></tbody>
+            </table>
+          </div>
+          <div id="destination-empty" class="empty-state hidden"><strong>조건에 맞는 출장지가 없어요.</strong><span>필터나 검색어를 바꿔 보세요.</span></div>
+        </section>
+
+        <section id="result-section" class="surface result-surface">
+          <div class="section-heading result-heading">
+            <div>
+              <p class="section-kicker">3. 출장별 결과</p>
+              <h2>확인할 출장부터 검토하세요</h2>
+              <p>거리 결과는 지급 여부를 확정하는 값이 아니라 급여담당자의 검토 대상을 좁히는 보조 정보입니다.</p>
+            </div>
+            <button id="export-results" class="button primary" type="button">결과 엑셀 내려받기</button>
+          </div>
+
+          <div id="result-metrics" class="result-metrics"></div>
+          <div class="result-callout">
+            <div><strong>왕복 2km 이내 출장과 위치 확인이 필요한 출장만 먼저 보세요.</strong><span>2km 이내인 경우에도 실제 교통비 발생 여부 등은 별도로 확인해야 합니다.</span></div>
+            <button id="show-needs-only" class="button secondary small" type="button">확인 필요한 출장만 보기</button>
+          </div>
+
+          <div class="toolbar result-toolbar">
+            <div id="result-filters" class="segmented compact-segmented" role="group" aria-label="결과 필터">
+              <button class="active" data-filter="all" type="button">전체</button>
+              <button data-filter="needs" type="button">확인 필요</button>
+              <button data-filter="within" type="button">2km 이내</button>
+              <button data-filter="over" type="button">2km 초과</button>
+            </div>
+            <label class="search-field small-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input id="result-search" type="search" placeholder="출장자·출장지 검색" />
+            </label>
+          </div>
+
+          <div class="table-wrap result-table-wrap">
+            <table class="data-table result-table">
+              <thead><tr><th>출장일</th><th>출장자</th><th>출장지</th><th>출장목적</th><th>왕복거리</th><th>거리판정</th><th>확인사항</th><th class="action-column">복사</th></tr></thead>
+              <tbody id="result-body"></tbody>
+            </table>
+          </div>
+          <div id="result-empty" class="empty-state hidden"><strong>조건에 맞는 출장 내역이 없어요.</strong></div>
+        </section>
+      </section>
+
+      <footer class="app-footer">
+        <p><strong>관내여비 콕검 v0.1</strong> · 거리 확인 업무를 돕는 보조 도구</p>
+        <p>최종 지급 판단은 관련 지침과 기관 기준을 확인해 주세요.</p>
+      </footer>
+    </main>
+  </div>
+
+  <div id="location-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card location-modal-card">
+      <div class="modal-header">
+        <div><p id="modal-kicker" class="section-kicker">위치 확인</p><h2 id="modal-title">장소를 선택하세요</h2></div>
+        <button id="close-modal" class="icon-button" type="button" aria-label="닫기">×</button>
+      </div>
+      <div id="modal-search-area" class="modal-search-area">
+        <form id="place-search-form" class="place-search-form">
+          <label class="search-field modal-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="place-search-input" type="search" placeholder="학교명, 장소명 또는 주소" autocomplete="off" />
+          </label>
+          <button class="button primary" type="submit">검색</button>
+        </form>
+        <p class="modal-help">검색 결과를 선택하거나 지도에서 실제 출입구를 눌러 위치를 조정할 수 있어요.</p>
+      </div>
+      <div class="modal-grid">
+        <div class="candidate-panel">
+          <div id="candidate-loading" class="loading-list hidden"><span class="spinner"></span>장소를 찾고 있어요.</div>
+          <div id="candidate-list" class="candidate-list"></div>
+          <div id="candidate-empty" class="candidate-empty"><strong>장소를 검색해 주세요.</strong><span>정확한 도로명주소가 있으면 함께 입력하는 것이 좋아요.</span></div>
+        </div>
+        <div class="map-panel">
+          <div id="map" class="map"></div>
+          <div class="map-tip">지도를 누르면 핀 위치를 직접 바꿀 수 있어요.</div>
+        </div>
+      </div>
+      <div id="pending-location" class="pending-location hidden">
+        <div><span>선택한 위치</span><strong id="pending-name"></strong><small id="pending-address"></small></div>
+        <button id="confirm-location" class="button primary" type="button">이 위치 사용</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

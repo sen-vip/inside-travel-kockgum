@@ -1,0 +1,27 @@
+{
+  "name": "inside-travel-kockgum",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "에듀파인 관내여비 내역의 출장지를 정리하고 왕복 2km 기준 확인 대상을 골라주는 웹앱",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:parser": "node tests/parser.test.mjs",
+    "test": "npm run test:parser && npm run test:export && npm run test:api",
+    "test:export": "node tests/exporter.test.mjs",
+    "test:api": "node tests/api.test.mjs"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "vite": "^7.0.4"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
