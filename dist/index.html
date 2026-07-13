@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="에듀파인 관내여비 내역을 일괄검사해 왕복 2km 확인 대상을 찾아주는 업무 보조 웹앱" />
+  <meta name="description" content="에듀파인 관내여비 내역의 왕복 2km 확인 대상을 찾아주는 업무 보조 웹앱" />
   <meta name="theme-color" content="#ffffff" />
   <title>관내여비 콕검</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-  <script type="module" crossorigin src="./assets/index-DgSIqyYM.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-B702EVdg.css">
+  <script type="module" crossorigin src="./assets/index-DEfluGQ9.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BdH4QBWH.css">
 </head>
 <body>
   <div id="app">
@@ -27,19 +27,19 @@
 
     <main id="top" class="page-shell">
       <section class="hero">
-        <p class="eyebrow">급여담당자용 관내여비 검토 작업대</p>
-        <h1>거리 계산 다음은,<br /><span>확인할 사람만 콕.</span></h1>
-        <p class="hero-copy">에듀파인 내역을 불러오면 왕복거리와 출장시간을 확인하고, 같은 사람의 같은 날 출장을 묶어 지급 검토 대상을 정리해요.</p>
+        <p class="eyebrow">급여담당자용 관내출장 거리 점검</p>
+        <h1>전체를 보지 말고,<br /><span>확인할 출장만 콕.</span></h1>
+        <p class="hero-copy">에듀파인 관내여비 내역을 불러오면 출장지를 묶고, 근무지와의 보행 왕복거리를 계산해 2km 이내 확인 대상을 찾아드려요.</p>
       </section>
 
-      <nav class="stepper four-steps" aria-label="작업 단계">
-        <div class="step active" data-step="1"><span>1</span><strong>자료 불러오기</strong></div>
+      <nav class="stepper" aria-label="작업 단계">
+        <div class="step active" data-step="1"><span>1</span><strong>파일 가져오기</strong></div>
         <div class="step-line"></div>
-        <div class="step" data-step="2"><span>2</span><strong>거리 검사</strong></div>
+        <div class="step" data-step="2"><span>2</span><strong>근무지 설정</strong></div>
         <div class="step-line"></div>
-        <div class="step" data-step="3"><span>3</span><strong>지급 검토</strong></div>
+        <div class="step" data-step="3"><span>3</span><strong>일괄검사</strong></div>
         <div class="step-line"></div>
-        <div class="step" data-step="4"><span>4</span><strong>결과 저장</strong></div>
+        <div class="step" data-step="4"><span>4</span><strong>결과 확인</strong></div>
       </nav>
 
       <section id="upload-section" class="surface upload-surface">
@@ -104,7 +104,6 @@
           <div class="storage-actions">
             <button id="clear-workplace-storage" class="text-button" type="button">저장된 근무지 초기화</button>
             <button id="clear-destination-storage" class="text-button" type="button">저장된 출장지 정보 초기화</button>
-            <button id="clear-review-storage" class="text-button" type="button">저장된 지급 검토 초기화</button>
           </div>
         </section>
 
@@ -112,8 +111,8 @@
           <div class="batch-hero">
             <div>
               <p class="section-kicker">3. 일괄검사</p>
-              <h2><span id="batch-destination-count">0</span>곳의 출장지를 한 번에 확인하세요</h2>
-              <p>저장된 위치를 먼저 적용하고, 명확한 출장지는 자동 선택한 뒤 왕복 보행거리를 계산합니다. 모호한 장소는 건너뛰고 확인 필요로 남겨요.</p>
+              <h2><span id="batch-destination-count">0</span>곳의 왕복거리를 한 번에 확인하세요</h2>
+              <p>저장된 위치를 먼저 적용하고 명확한 출장지는 자동 확인합니다. 위치가 확인된 장소는 보행 왕복거리와 2km 여부를 이어서 계산해요.</p>
             </div>
             <div class="batch-actions">
               <button id="bulk-inspect" class="button primary large" type="button">일괄검사 시작</button>
@@ -136,13 +135,13 @@
         <section class="surface destination-surface">
           <div class="section-heading destination-heading">
             <div>
-              <p class="section-kicker">출장지별 검사 결과</p>
+              <p class="section-kicker">출장지별 거리</p>
               <h2>불명확한 장소만 확인하세요</h2>
-              <p>같은 출장지는 한 번만 확인하며, 위치를 확정하면 연결된 모든 출장 건에 함께 적용됩니다.</p>
+              <p>같은 출장지는 한 번만 확인합니다. 위치를 바꾸면 연결된 모든 출장 건의 거리가 함께 갱신돼요.</p>
             </div>
-            <div class="heading-actions secondary-actions">
-              <button id="auto-search" class="button secondary" type="button">위치만 먼저 찾기</button>
-              <button id="calculate-all" class="button secondary" type="button">확인된 장소 거리 계산</button>
+            <div class="heading-actions">
+              <button id="auto-search" class="button secondary" type="button">위치 자동 찾기</button>
+              <button id="calculate-all" class="button primary" type="button">거리 계산하기</button>
             </div>
           </div>
 
@@ -170,88 +169,49 @@
           <div id="destination-empty" class="empty-state hidden"><strong>조건에 맞는 출장지가 없어요.</strong><span>필터나 검색어를 바꿔 보세요.</span></div>
         </section>
 
-        <section id="result-section" class="surface review-surface">
-          <div class="section-heading result-heading review-heading">
+        <section id="result-section" class="surface result-surface">
+          <div class="section-heading result-heading">
             <div>
-              <p class="section-kicker">4. 지급 검토</p>
-              <h2>사람과 날짜별로 확인하세요</h2>
-              <p>같은 날 여러 출장, 왕복 2km 이내, 이동수단 미확인 건을 먼저 보여줍니다. 앱은 지급액을 확정하지 않고 확인 흐름을 정리합니다.</p>
+              <p class="section-kicker">4. 출장별 결과</p>
+              <h2>2km 여부를 한눈에 확인하세요</h2>
+              <p>입력하거나 완료 처리할 필요 없이, 왕복거리와 확인할 사항만 빠르게 살펴보는 화면입니다.</p>
             </div>
-            <button id="export-results" class="button primary" type="button">검토 결과 엑셀</button>
+            <button id="export-results" class="button primary" type="button">결과 엑셀 내려받기</button>
           </div>
 
-          <div id="review-metrics" class="review-metrics" aria-label="지급 검토 요약"></div>
+          <div id="result-metrics" class="result-metrics compact-summary" aria-label="출장 결과 요약"></div>
+          <div class="result-callout">
+            <div><strong>왕복 2km 이내와 위치·거리 확인이 필요한 출장부터 보세요.</strong><span>2km 이내인 경우에는 실제 이동수단과 교통비 발생 여부를 별도로 확인해 주세요.</span></div>
+            <button id="show-needs-only" class="button secondary small" type="button">확인 대상만 보기</button>
+          </div>
 
-          <div class="review-toolbar">
-            <div id="review-filters" class="segmented review-segmented" role="group" aria-label="지급 검토 필터">
-              <button class="active" data-review-filter="pending" type="button">확인 필요</button>
-              <button data-review-filter="hold" type="button">보류</button>
-              <button data-review-filter="complete" type="button">검토 완료</button>
-              <button data-review-filter="clear" type="button">일반</button>
-              <button data-review-filter="all" type="button">전체</button>
+          <div class="toolbar result-toolbar">
+            <div id="result-filters" class="segmented compact-segmented" role="group" aria-label="결과 필터">
+              <button class="active" data-filter="all" type="button">전체</button>
+              <button data-filter="needs" type="button">확인 대상</button>
+              <button data-filter="within" type="button">2km 이내</button>
+              <button data-filter="over" type="button">2km 초과</button>
+              <button data-filter="boundary" type="button">경계</button>
+              <button data-filter="failed" type="button">실패</button>
             </div>
-            <label class="search-field review-search-field">
+            <label class="search-field small-search">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-              <input id="review-search" type="search" placeholder="출장자·출장지 검색" />
+              <input id="result-search" type="search" placeholder="출장자·출장지 검색" />
             </label>
           </div>
 
-          <div class="review-workbench">
-            <div class="review-inbox">
-              <div class="review-inbox-head"><strong id="review-list-title">확인 필요</strong><span id="review-list-count">0묶음</span></div>
-              <div id="review-list" class="review-list"></div>
-              <div id="review-empty" class="review-empty hidden"><strong>조건에 맞는 검토 묶음이 없어요.</strong><span>다른 필터를 선택해 보세요.</span></div>
-            </div>
-            <aside id="review-detail" class="review-detail">
-              <div id="review-detail-empty" class="review-detail-empty">
-                <span class="detail-empty-mark">✓</span>
-                <strong>왼쪽에서 검토할 사람을 선택하세요</strong>
-                <p>같은 사람의 같은 날짜 출장을 한 번에 확인할 수 있어요.</p>
-              </div>
-              <div id="review-detail-content" class="review-detail-content hidden"></div>
-            </aside>
+          <div class="table-wrap result-table-wrap">
+            <table class="data-table result-table">
+              <thead><tr><th>출장일</th><th>출장자</th><th>출장지·목적</th><th>왕복거리</th><th>2km 판정</th><th>확인사항</th></tr></thead>
+              <tbody id="result-body"></tbody>
+            </table>
           </div>
-
-          <details class="raw-results">
-            <summary><span>출장별 전체 내역</span><small>거리 결과와 기존 지급내역을 표로 확인</small></summary>
-            <div class="raw-results-body">
-              <div id="result-metrics" class="result-metrics"></div>
-              <div class="result-callout">
-                <div><strong>왕복 2km 이내 출장과 위치 확인이 필요한 출장부터 검토하세요.</strong><span>2km 이내인데 지급 내역이 있는 건은 ‘지급내역 확인 필요’로 표시합니다.</span></div>
-                <button id="show-needs-only" class="button secondary small" type="button">확인 필요한 출장만 보기</button>
-              </div>
-              <div class="toolbar result-toolbar">
-                <div id="result-filters" class="segmented compact-segmented" role="group" aria-label="결과 필터">
-                  <button class="active" data-filter="all" type="button">전체</button>
-                  <button data-filter="needs" type="button">확인 필요</button>
-                  <button data-filter="within" type="button">2km 이내</button>
-                  <button data-filter="over" type="button">2km 초과</button>
-                  <button data-filter="boundary" type="button">경계 구간</button>
-                  <button data-filter="failed" type="button">계산 실패</button>
-                </div>
-                <label class="search-field small-search">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                  <input id="result-search" type="search" placeholder="출장자·출장지 검색" />
-                </label>
-              </div>
-              <div class="result-options">
-                <label><input id="paid-only" type="checkbox" /> 기존에 여비가 지급된 건만 보기</label>
-                <label><input id="unpaid-empty-only" type="checkbox" /> 부지급 표시가 없는 건만 보기</label>
-              </div>
-              <div class="table-wrap result-table-wrap">
-                <table class="data-table result-table">
-                  <thead><tr><th>출장일</th><th>출장자</th><th>출장지</th><th>출장목적</th><th>왕복거리</th><th>거리판정</th><th>기존 지급</th><th>확인사항</th><th class="action-column">복사</th></tr></thead>
-                  <tbody id="result-body"></tbody>
-                </table>
-              </div>
-              <div id="result-empty" class="empty-state hidden"><strong>조건에 맞는 출장 내역이 없어요.</strong></div>
-            </div>
-          </details>
+          <div id="result-empty" class="empty-state hidden"><strong>조건에 맞는 출장 내역이 없어요.</strong></div>
         </section>
       </section>
 
       <footer class="app-footer">
-        <p><strong>관내여비 콕검 v0.3</strong> · 거리 검사와 지급 검토 흐름을 돕는 보조 도구</p>
+        <p><strong>관내여비 콕검 v0.2.5</strong> · 왕복 2km 확인 업무를 돕는 보조 도구</p>
         <p>최종 지급 판단은 관련 지침과 기관 기준을 확인해 주세요.</p>
       </footer>
     </main>
@@ -267,7 +227,7 @@
         <form id="place-search-form" class="place-search-form">
           <label class="search-field modal-search">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-            <input id="place-search-input" type="search" placeholder="학교명, 장소명 또는 도로명주소" autocomplete="off" />
+            <input id="place-search-input" type="search" placeholder="학교명, 장소명 또는 주소" autocomplete="off" />
           </label>
           <button class="button primary" type="submit">검색</button>
         </form>
@@ -277,7 +237,7 @@
         <div class="candidate-panel">
           <div id="candidate-loading" class="loading-list hidden"><span class="spinner"></span>장소를 찾고 있어요.</div>
           <div id="candidate-list" class="candidate-list"></div>
-          <div id="candidate-empty" class="candidate-empty"><strong>장소를 검색해 주세요.</strong><span>예: 대청중학교 또는 정확한 도로명주소</span></div>
+          <div id="candidate-empty" class="candidate-empty"><strong>장소를 검색해 주세요.</strong><span>정확한 도로명주소가 있으면 함께 입력하는 것이 좋아요.</span></div>
         </div>
         <div class="map-panel">
           <div id="map" class="map"></div>

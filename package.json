@@ -1,22 +1,22 @@
 {
   "name": "inside-travel-kockgum",
-  "version": "0.3.0",
+  "version": "0.2.5",
   "private": true,
   "type": "module",
-  "description": "에듀파인 관내여비 내역의 거리와 지급 검토 대상을 사람·날짜별로 정리하는 웹앱",
+  "description": "에듀파인 관내여비 내역을 일괄검사해 왕복 2km 여부를 한눈에 보여주는 웹앱",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "test:parser": "node tests/parser.test.mjs",
-    "test": "npm run test:parser && npm run test:review && npm run test:export && npm run test:api",
-    "test:review": "node tests/review.test.mjs",
+    "test": "npm run test:parser && npm run test:dom && npm run test:export && npm run test:api",
     "test:export": "node tests/exporter.test.mjs",
-    "test:api": "node tests/api.test.mjs"
+    "test:api": "node tests/api.test.mjs",
+    "test:dom": "node tests/dom.test.mjs"
   },
   "dependencies": {
     "leaflet": "^1.9.4",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "vite": "^7.0.4"
