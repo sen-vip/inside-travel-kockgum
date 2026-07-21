@@ -14,6 +14,15 @@ const REQUIRED_HEADERS = ['startDate', 'endDate', 'category', 'traveler', 'desti
 const EXCLUDE_WORDS = /^(합\s*계|총\s*계|소\s*계)$/;
 const AMBIGUOUS_WORDS = /(인근|주변|일대|관내\s*일원|협의회(?:\s*장소)?|학교\s*주변|산\s*주변|카페|커피|편의점|식당|음식점|본청)/;
 
+const INDOOR_ROOM_WORDS = [
+  '시청각실', '대회의실', '소회의실', '회의실', '대강당', '강당', '교육장', '연수실',
+  '세미나실', '상황실', '회의장', '체육관', '도서실', '행정실', '교장실', '교무실',
+  '상담실', '다목적실', '컴퓨터실', '정보실', '방송실', '급식실',
+];
+const INDOOR_ROOM_PATTERN = `(?:제\\s*\\d+\\s*)?(?:${INDOOR_ROOM_WORDS.join('|')})`;
+const FLOOR_PATTERN = '(?:지하\\s*\\d+\\s*층?|B\\s*\\d+\\s*층?|\\d+\\s*층)';
+const BUILDING_PATTERN = '(?:본관|별관|신관|구관|후관|제\\s*\\d+\\s*관)';
+
 export function cleanText(value) {
   if (value === null || value === undefined) return '';
   return String(value)
@@ -34,6 +43,54 @@ export function normalizeDestination(value) {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+}
+
+
+function preserveBuildingName(fragment) {
+  const match = cleanText(fragment).match(new RegExp(BUILDING_PATTERN, 'i'));
+  return match ? cleanText(match[0]) : '';
+}
+
+export function stripIndoorLocation(value) {
+  let text = cleanText(value);
+  if (!text) return '';
+
+  // 괄호 전체가 층·실 정보인 경우 제거하되, 본관·별관 같은 건물 구분은 남긴다.
+  text = text.replace(/\(([^()]*)\)/g, (full, inner) => {
+    const content = cleanText(inner);
+    const hasFloor = new RegExp(FLOOR_PATTERN, 'i').test(content);
+    const hasRoom = new RegExp(INDOOR_ROOM_PATTERN, 'i').test(content);
+    const hasRoadAddress = /(?:대로|로|길|번길)\s*\d+/.test(content);
+    if ((!hasFloor && !hasRoom) || hasRoadAddress) return full;
+    const building = preserveBuildingName(content);
+    return building ? ` ${building}` : '';
+  });
+
+  // 문자열 끝에 붙은 층·실 정보를 제거한다. 도로명 숫자와 번지는 건드리지 않는다.
+  const floorAndTail = new RegExp(`\\s*(?:[,·/|-]\\s*)?${FLOOR_PATTERN}(?:\\s*\\d+\\s*호)?(?:\\s+${INDOOR_ROOM_PATTERN})?\\s*$`, 'i');
+  const roomOnly = new RegExp(`\\s*(?:[,·/|-]\\s*)?${INDOOR_ROOM_PATTERN}\\s*$`, 'i');
+  let previous = '';
+  while (text && text !== previous) {
+    previous = text;
+    text = text.replace(floorAndTail, '').replace(roomOnly, '');
+    text = cleanText(text).replace(/[,·/|-]+\s*$/, '').trim();
+  }
+
+  return cleanText(text);
+}
+
+export function buildDestinationSearchQuery(value) {
+  const original = cleanText(value);
+  const originalWithoutIndoor = stripIndoorLocation(original);
+  const extractedAddress = extractAddress(originalWithoutIndoor || original);
+  const base = extractedAddress || originalWithoutIndoor || original;
+  const query = stripIndoorLocation(base) || base || original;
+  return {
+    query,
+    extractedAddress,
+    changed: normalizeDestination(query) !== normalizeDestination(original),
+    indoorAdjusted: normalizeDestination(originalWithoutIndoor) !== normalizeDestination(original),
+  };
 }
 
 function findHeaderMap(...headerRows) {
@@ -128,7 +185,7 @@ export function extractAddress(text) {
   for (const candidate of candidates) {
     if (!/(특별시|광역시|특별자치시|특별자치도|[가-힣]+구|[가-힣]+시)/.test(candidate)) continue;
     if (!/(로|길|대로|번길)\s*\d+/.test(candidate)) continue;
-    const match = candidate.match(/((?:서울특별시|부산광역시|대구광역시|인천광역시|광주광역시|대전광역시|울산광역시|세종특별자치시|[가-힣]+도)?\s*[가-힣]+(?:시|군|구)?\s*[가-힣0-9·.-]+(?:대로|로|길|번길)\s*\d+(?:-\d+)?(?:\s*\d+동)?)/);
+    const match = candidate.match(/((?:서울(?:특별시)?|부산(?:광역시)?|대구(?:광역시)?|인천(?:광역시)?|광주(?:광역시)?|대전(?:광역시)?|울산(?:광역시)?|세종(?:특별자치시)?|[가-힣]+도)?\s*[가-힣]+(?:시|군|구)?\s*[가-힣0-9·.-]+(?:대로|로|길|번길)\s*\d+(?:-\d+)?(?:\s*\d+동)?)/);
     if (match) return cleanText(match[1]);
   }
   return '';
@@ -231,11 +288,14 @@ export function parseEdufineWorkbook(arrayBuffer, XLSX) {
   trips.forEach((trip) => {
     const key = trip.normalizedDestination;
     if (!destinationsByKey.has(key)) {
+      const search = buildDestinationSearchQuery(trip.destination);
       destinationsByKey.set(key, {
         key,
         originalName: trip.destination,
-        searchQuery: extractAddress(trip.destination) || trip.destination,
-        extractedAddress: extractAddress(trip.destination),
+        searchQuery: search.query,
+        searchQueryChanged: search.changed,
+        searchQueryIndoorAdjusted: search.indoorAdjusted,
+        extractedAddress: search.extractedAddress,
         ambiguous: isAmbiguousDestination(trip.destination),
         tripIds: [],
         travelers: new Set(),

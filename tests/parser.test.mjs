@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { parseEdufineWorkbook } from '../src/parser.js';
+import { buildDestinationSearchQuery, parseEdufineWorkbook, stripIndoorLocation } from '../src/parser.js';
 
 const require = createRequire(import.meta.url);
 const XLSX = require('xlsx');
@@ -11,6 +11,15 @@ const targets = args.length ? args : [
   new URL('./fixtures/edufine-sample.xlsx', import.meta.url).pathname,
   new URL('./fixtures/edufine-target-list-sample.xlsx', import.meta.url).pathname,
 ];
+
+
+assert.equal(stripIndoorLocation('서울특별시교육청 1층 시청각실'), '서울특별시교육청');
+assert.equal(stripIndoorLocation('서울특별시교육청 별관 3층 회의실'), '서울특별시교육청 별관');
+assert.equal(stripIndoorLocation('강남서초교육지원청 대강당'), '강남서초교육지원청');
+assert.equal(stripIndoorLocation('동작구 장승배기로30길 6-1'), '동작구 장승배기로30길 6-1');
+assert.equal(stripIndoorLocation('관악구 행운1길 62, 1층 3호'), '관악구 행운1길 62');
+assert.equal(buildDestinationSearchQuery('서울 종로구 송월길 48, 3층 회의실').query, '서울 종로구 송월길 48');
+assert.equal(buildDestinationSearchQuery('서울특별시교육청(1층 시청각실)').indoorAdjusted, true);
 
 const results = targets.map((file) => {
   const buffer = fs.readFileSync(file);

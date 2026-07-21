@@ -355,7 +355,12 @@ function renderDestinations() {
         <td>
           <div class="cell-title">
             <button data-action="toggle-details" data-key="${escapeHtml(destination.key)}" type="button" aria-label="출장 상세 ${expanded ? '접기' : '펼치기'}">${expanded ? '−' : '+'}</button>
-            <div><strong>${escapeHtml(destination.originalName)}</strong><span class="cell-sub">${escapeHtml(destination.searchQuery)}</span>${destination.ambiguous ? '<span class="ambiguous-tag">자동 확정 안 함</span>' : ''}</div>
+            <div>
+              <strong>${escapeHtml(destination.originalName)}</strong>
+              <span class="cell-sub">${destination.searchQueryChanged ? '지도 검색: ' : ''}${escapeHtml(destination.searchQuery)}</span>
+              ${destination.searchQueryIndoorAdjusted ? '<span class="search-clean-note">검색할 때 층·실 정보를 제외했어요.</span>' : ''}
+              ${destination.ambiguous ? '<span class="ambiguous-tag">자동 확정 안 함</span>' : ''}
+            </div>
           </div>
         </td>
         <td><strong>${destination.count}</strong>건</td>
@@ -577,7 +582,7 @@ function confidenceCandidate(destination, candidates) {
     if (candidates.length === 1) return candidates[0];
     return null;
   }
-  const target = canonical(destination.originalName);
+  const target = canonical(destination.searchQuery || destination.originalName);
   const exact = candidates.filter((candidate) => canonical(candidate.name) === target && sameRegion(candidate, state.workplace));
   if (exact.length === 1) return exact[0];
   const strong = candidates.filter((candidate) => {
@@ -909,6 +914,17 @@ async function openLocationModal(mode, key = null) {
     dom.modal_title.textContent = destination.originalName;
     query = destination.searchQuery;
     current = destination.location;
+    const help = document.querySelector('.modal-help');
+    if (help) {
+      help.textContent = destination.searchQueryIndoorAdjusted
+        ? `원본 출장지: ${destination.originalName} · 검색할 때 층·실 정보를 제외했어요.`
+        : '검색 결과를 선택하거나 지도에서 실제 출입구를 눌러 위치를 조정할 수 있어요.';
+    }
+  }
+
+  if (mode === 'workplace') {
+    const help = document.querySelector('.modal-help');
+    if (help) help.textContent = '검색 결과를 선택하거나 지도에서 실제 출입구를 눌러 위치를 조정할 수 있어요.';
   }
 
   dom.place_search_input.value = query;

@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#ffffff" />
   <title>관내여비 콕검</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-  <script type="module" crossorigin src="./assets/index-DlrgeHJL.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BdH4QBWH.css">
+  <script type="module" crossorigin src="./assets/index-6HeIOf1L.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DSCgS-gU.css">
 </head>
 <body>
   <div id="app">
@@ -59,6 +59,24 @@
           <span>에듀파인에서 출력한 관내여비 내역 또는 대상목록 파일</span>
           <input id="file-input" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
         </div>
+
+        <details class="file-path-guide">
+          <summary>
+            <span>에듀파인 파일은 어디서 받나요?</span>
+            <span class="guide-chevron" aria-hidden="true">⌄</span>
+          </summary>
+          <div class="file-path-content">
+            <div class="file-path-card">
+              <span class="file-path-label">학교회계</span>
+              <p>학교회계 <b>›</b> 지출관리 <b>›</b> 지출지원 <b>›</b> 출장여비 <b>›</b> 출장여비(관내) <b>›</b> [출력] <b>›</b> 엑셀 저장</p>
+            </div>
+            <div class="file-path-card">
+              <span class="file-path-label">재정사업관리</span>
+              <p>재정사업관리 <b>›</b> 사업재정관리 <b>›</b> 재무관리 <b>›</b> 관내여비관리 <b>›</b> 엑셀 저장</p>
+            </div>
+            <p class="file-path-footnote">위 두 메뉴에서 내려받은 .xls, .xlsx 파일을 모두 사용할 수 있어요.</p>
+          </div>
+        </details>
 
         <div class="privacy-note">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-2.9 8.4-7 10-4.1-1.6-7-5.4-7-10V6l7-3Z" /><path d="m9 12 2 2 4-4" /></svg>
@@ -211,7 +229,7 @@
       </section>
 
       <footer class="app-footer">
-        <p><strong>관내여비 콕검 v0.2.6</strong> · 왕복 2km 확인 업무를 돕는 보조 도구</p>
+        <p><strong>관내여비 콕검 v0.2.7</strong> · 왕복 2km 확인 업무를 돕는 보조 도구</p>
         <p>최종 지급 판단은 관련 지침과 기관 기준을 확인해 주세요.</p>
       </footer>
     </main>

@@ -44,6 +44,7 @@ export function exportResults({ XLSX, trips, destinations, workplace }) {
       출장자: trip.traveler,
       출장지: trip.destination,
       출장목적: trip.purpose,
+      지도검색어: destination?.searchQuery || trip.destination,
       확인된출장지: destination?.location?.name || '',
       출장지주소: destination?.location?.address || '',
       위치확인방식: destination?.locationSource === 'auto' ? '자동 확인' : destination?.locationSource === 'saved' ? '저장 위치' : destination?.location ? '직접 선택' : '',
@@ -64,6 +65,8 @@ export function exportResults({ XLSX, trips, destinations, workplace }) {
     const total = destination.route?.totalDistance;
     return {
       원본출장지: destination.originalName,
+      지도검색어: destination.searchQuery || destination.originalName,
+      층실정보제외: destination.searchQueryIndoorAdjusted ? 'Y' : '',
       출장건수: destination.count,
       확인된장소: destination.location?.name || '',
       주소: destination.location?.address || '',
@@ -86,7 +89,7 @@ export function exportResults({ XLSX, trips, destinations, workplace }) {
   ));
   const workbook = XLSX.utils.book_new();
   const summaryRows = [
-    ['관내여비 콕검 v0.2.6 일괄검사 결과'],
+    ['관내여비 콕검 v0.2.7 일괄검사 결과'],
     ['근무지', workplace?.name || ''],
     ['근무지 주소', workplace?.address || ''],
     ['생성일시', new Date().toLocaleString('ko-KR')],
