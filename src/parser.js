@@ -1,18 +1,18 @@
 const HEADER_ALIASES = {
-  startDate: ['시작일', '출장시작일'],
-  endDate: ['종료일', '출장종료일'],
+  startDate: ['시작일', '시작일자', '출장시작일'],
+  endDate: ['종료일', '종료일자', '출장종료일'],
   category: ['출장구분', '구분'],
   traveler: ['출장자', '성명'],
   destination: ['출장지', '출장장소'],
   purpose: ['출장목적', '목적'],
   unpaid: ['부지급'],
   travelAmount: ['여비금액', '여비'],
-  paymentAmount: ['지급금액'],
+  paymentAmount: ['지급금액', '지급액'],
 };
 
 const REQUIRED_HEADERS = ['startDate', 'endDate', 'category', 'traveler', 'destination'];
 const EXCLUDE_WORDS = /^(합\s*계|총\s*계|소\s*계)$/;
-const AMBIGUOUS_WORDS = /(인근|주변|일대|관내\s*일원|협의회(?:\s*장소)?|학교\s*주변|산\s*주변|카페|커피|편의점|식당|음식점)/;
+const AMBIGUOUS_WORDS = /(인근|주변|일대|관내\s*일원|협의회(?:\s*장소)?|학교\s*주변|산\s*주변|카페|커피|편의점|식당|음식점|본청)/;
 
 export function cleanText(value) {
   if (value === null || value === undefined) return '';
@@ -36,14 +36,20 @@ export function normalizeDestination(value) {
     .toLowerCase();
 }
 
-function findHeaderMap(row) {
-  const normalized = row.map(normalizeHeader);
+function findHeaderMap(...headerRows) {
+  const rows = headerRows.filter(Array.isArray);
+  const columnCount = Math.max(0, ...rows.map((row) => row.length));
   const map = {};
 
   for (const [key, aliases] of Object.entries(HEADER_ALIASES)) {
     const aliasSet = aliases.map(normalizeHeader);
-    const index = normalized.findIndex((cell) => aliasSet.includes(cell));
-    if (index >= 0) map[key] = index;
+    for (let column = 0; column < columnCount; column += 1) {
+      const matched = rows.some((row) => aliasSet.includes(normalizeHeader(row[column])));
+      if (matched) {
+        map[key] = column;
+        break;
+      }
+    }
   }
 
   return REQUIRED_HEADERS.every((key) => Number.isInteger(map[key])) ? map : null;
@@ -97,10 +103,10 @@ function cell(row, map, key) {
   return Number.isInteger(index) ? row[index] : '';
 }
 
-function isTripRow(row, map, XLSX) {
+function isTripRow(row, map, XLSX, effectiveCategory = '') {
   const start = cell(row, map, 'startDate');
   const end = cell(row, map, 'endDate');
-  const category = cleanText(cell(row, map, 'category'));
+  const category = cleanText(effectiveCategory || cell(row, map, 'category'));
   const traveler = cleanText(cell(row, map, 'traveler'));
   const destination = cleanText(cell(row, map, 'destination'));
 
@@ -129,7 +135,22 @@ export function extractAddress(text) {
 }
 
 export function isAmbiguousDestination(text) {
-  return AMBIGUOUS_WORDS.test(cleanText(text));
+  const value = cleanText(text);
+  if (!value) return true;
+  if (AMBIGUOUS_WORDS.test(value)) return true;
+  if (/\(\s*(?:[2-9]|\d{2,})\s*곳\s*\)|외\s*\d+\s*곳/.test(value)) return true;
+
+  const parts = value.split(',').map(cleanText).filter(Boolean);
+  if (parts.length <= 1) return false;
+
+  const locationLikeCount = parts.filter((part) => {
+    if (/(?:초|중|고|유|학교|교육청|연수원|도서관|복지관)$/.test(part)) return true;
+    if (/(?:[가-힣]+(?:시|군|구|동)\s*)?[가-힣0-9·.-]+(?:대로|로|길|번길)\s*\d+(?:-\d+)?/.test(part)) return true;
+    if (/[가-힣]+동\s*\d+(?:-\d+)?/.test(part)) return true;
+    return false;
+  }).length;
+
+  return locationLikeCount >= 2;
 }
 
 export function parseEdufineWorkbook(arrayBuffer, XLSX) {
@@ -158,14 +179,21 @@ export function parseEdufineWorkbook(arrayBuffer, XLSX) {
     });
 
     let activeMap = null;
+    let inheritedCategory = '';
     rows.forEach((row, rowIndex) => {
-      const headerMap = findHeaderMap(row);
+      const headerMap = findHeaderMap(row) || findHeaderMap(row, rows[rowIndex + 1]);
       if (headerMap) {
         activeMap = headerMap;
+        inheritedCategory = '';
         foundHeader = true;
         return;
       }
-      if (!activeMap || !isTripRow(row, activeMap, XLSX)) return;
+      if (!activeMap) return;
+
+      const rowCategory = cleanText(cell(row, activeMap, 'category'));
+      if (rowCategory) inheritedCategory = rowCategory;
+      const effectiveCategory = rowCategory || inheritedCategory;
+      if (!isTripRow(row, activeMap, XLSX, effectiveCategory)) return;
 
       const destination = cleanText(cell(row, activeMap, 'destination'));
       const normalizedDestination = normalizeDestination(destination);
@@ -175,7 +203,7 @@ export function parseEdufineWorkbook(arrayBuffer, XLSX) {
         sourceRow: rowIndex + 1,
         startDate: formatExcelDate(cell(row, activeMap, 'startDate'), XLSX),
         endDate: formatExcelDate(cell(row, activeMap, 'endDate'), XLSX),
-        category: cleanText(cell(row, activeMap, 'category')),
+        category: effectiveCategory,
         traveler: cleanText(cell(row, activeMap, 'traveler')),
         destination,
         normalizedDestination,
@@ -188,7 +216,7 @@ export function parseEdufineWorkbook(arrayBuffer, XLSX) {
   }
 
   if (!foundHeader) {
-    const error = new Error('에듀파인 관내여비 내역의 표 머리글을 찾지 못했습니다.');
+    const error = new Error('에듀파인 관내여비 내역 또는 대상목록의 표 머리글을 찾지 못했습니다.');
     error.code = 'HEADER_NOT_FOUND';
     throw error;
   }

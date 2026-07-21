@@ -1,6 +1,6 @@
 {
   "name": "inside-travel-kockgum",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "type": "module",
   "description": "에듀파인 관내여비 내역을 일괄검사해 왕복 2km 여부를 한눈에 보여주는 웹앱",

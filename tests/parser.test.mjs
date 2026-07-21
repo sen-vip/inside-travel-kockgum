@@ -9,6 +9,7 @@ const args = process.argv.slice(2);
 const targets = args.length ? args : [
   new URL('./fixtures/edufine-sample.xls', import.meta.url).pathname,
   new URL('./fixtures/edufine-sample.xlsx', import.meta.url).pathname,
+  new URL('./fixtures/edufine-target-list-sample.xlsx', import.meta.url).pathname,
 ];
 
 const results = targets.map((file) => {
@@ -25,6 +26,11 @@ if (!args.length) {
   assert.equal(results[0].destinations.find((item) => item.originalName === '새봄중학교')?.count, 2);
   assert.equal(results[0].destinations.find((item) => item.originalName === '인근 편의점')?.ambiguous, true);
   assert.equal(results[0].destinations.find((item) => item.originalName.includes('한국예시기관'))?.extractedAddress, '성동구 아차산로17길 49');
+
+  assert.deepEqual(results[2].summary, { tripCount: 3, travelerCount: 3, destinationCount: 2 });
+  assert.equal(results[2].trips[1].category, '관내-반일');
+  assert.equal(results[2].trips[0].paymentAmount, 10000);
+  assert.equal(results[2].destinations.find((item) => item.originalName === '새봄초, 하늘중')?.ambiguous, true);
 }
 
 if (results.length > 1) {

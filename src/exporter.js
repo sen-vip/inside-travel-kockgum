@@ -86,7 +86,7 @@ export function exportResults({ XLSX, trips, destinations, workplace }) {
   ));
   const workbook = XLSX.utils.book_new();
   const summaryRows = [
-    ['관내여비 콕검 v0.2.5 일괄검사 결과'],
+    ['관내여비 콕검 v0.2.6 일괄검사 결과'],
     ['근무지', workplace?.name || ''],
     ['근무지 주소', workplace?.address || ''],
     ['생성일시', new Date().toLocaleString('ko-KR')],
