@@ -3,13 +3,15 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './styles.css';
 import { parseEdufineWorkbook } from './parser.js';
-import { calculateRoundTrip, getApiHealth, searchPlaces } from './api.js';
+import { calculateRoundTrip, getApiHealth, getTmapUsage, searchPlaces } from './api.js';
 import {
   clearAllStorage,
   clearDestinationStorage,
   loadDestinationMemory,
   loadRouteCache,
   loadWorkplace,
+  isRouteCacheFresh,
+  isTmapDataFresh,
   saveDestinationMemory,
   saveRouteCache,
   saveWorkplace,
@@ -22,6 +24,7 @@ const dom = Object.fromEntries([
   'set-workplace', 'workplace-empty', 'workplace-card', 'workplace-name', 'workplace-address',
   'view-workplace', 'change-workplace', 'clear-all-storage', 'clear-workplace-storage', 'clear-destination-storage',
   'batch-destination-count', 'bulk-inspect', 'stop-inspect', 'batch-readiness',
+  'tmap-usage-panel', 'tmap-usage-count', 'tmap-usage-bar', 'tmap-usage-status', 'tmap-usage-estimate',
   'batch-complete-actions', 'retry-incomplete', 'recalculate-all',
   'auto-search', 'calculate-all', 'progress-panel', 'progress-title', 'progress-count',
   'progress-bar', 'progress-detail', 'progress-subcounts', 'destination-filters',
@@ -50,6 +53,7 @@ const state = {
   busy: false,
   stopRequested: false,
   apiConfigured: false,
+  tmapUsage: { loading: true, configured: null, used: 0, officialLimit: 1000, safeLimit: 900, warningAt: 800, remainingSafe: 900, blocked: false, error: '' },
   batchStarted: false,
   lastBatchSummary: null,
   modal: {
@@ -101,6 +105,117 @@ function routeCacheKey(workplace, location) {
   if (!workplace || !location) return '';
   return [workplace.lat, workplace.lon, location.lat, location.lon]
     .map((value) => Number(value).toFixed(6)).join('|');
+}
+
+function getFreshRouteCache(key) {
+  if (!key) return null;
+  const cached = state.routeCache[key];
+  if (isRouteCacheFresh(cached)) return cached;
+  if (cached) {
+    delete state.routeCache[key];
+    saveRouteCache(state.routeCache);
+  }
+  return null;
+}
+
+function expireStaleTmapData() {
+  const now = Date.now();
+  let changed = false;
+  let destinationMemoryChanged = false;
+  let routeCacheChanged = false;
+
+  if (state.workplace && !isTmapDataFresh(state.workplace, now)) {
+    state.workplace = null;
+    saveWorkplace(null);
+    changed = true;
+  }
+
+  for (const destination of state.destinations) {
+    const locationTimestamp = destination.location?.savedAt || destination.lastCheckedAt;
+    if (destination.location && !isTmapDataFresh(locationTimestamp, now)) {
+      destination.location = null;
+      destination.locationSource = null;
+      destination.locationStatus = 'needs';
+      destination.searchStatus = 'pending';
+      destination.route = null;
+      destination.routeStatus = 'pending';
+      destination.searchError = '';
+      delete state.destinationMemory[destination.key];
+      destinationMemoryChanged = true;
+      changed = true;
+      continue;
+    }
+    if (destination.route && !isRouteCacheFresh(destination.route, now)) {
+      destination.route = null;
+      destination.routeStatus = 'pending';
+      changed = true;
+    }
+  }
+
+  for (const [key, route] of Object.entries(state.routeCache)) {
+    if (!isRouteCacheFresh(route, now)) {
+      delete state.routeCache[key];
+      routeCacheChanged = true;
+      changed = true;
+    }
+  }
+
+  if (destinationMemoryChanged) saveDestinationMemory(state.destinationMemory);
+  if (routeCacheChanged) saveRouteCache(state.routeCache);
+  return changed;
+}
+
+function applyUsageSnapshot(usage = {}) {
+  if (!usage || typeof usage !== 'object') return;
+  state.tmapUsage = {
+    ...state.tmapUsage,
+    ...usage,
+    loading: false,
+    configured: true,
+    error: '',
+  };
+}
+
+function estimateRouteCalls({ forceRoutes = false, routeOnly = false } = {}) {
+  if (!state.parsed || !state.workplace) return 0;
+  let destinations = state.destinations;
+  if (routeOnly) destinations = destinations.filter((destination) => destination.location);
+
+  return destinations.reduce((sum, destination) => {
+    if (!destination.location) return routeOnly ? sum : sum + 2;
+    const key = routeCacheKey(state.workplace, destination.location);
+    const hasFreshCache = Boolean(getFreshRouteCache(key));
+    const alreadyComplete = destination.routeStatus === 'complete' && destination.route && hasFreshCache;
+    if (!forceRoutes && alreadyComplete) return sum;
+    if (!forceRoutes && hasFreshCache) return sum;
+    return sum + 2;
+  }, 0);
+}
+
+function usageAllows(calls = 0) {
+  if (state.tmapUsage.configured !== true || state.tmapUsage.error) return false;
+  return (Number(state.tmapUsage.used) || 0) + Math.max(0, Number(calls) || 0) <= Number(state.tmapUsage.safeLimit || 900);
+}
+
+async function refreshTmapUsage({ silent = false } = {}) {
+  if (!silent) state.tmapUsage.loading = true;
+  try {
+    const data = await getTmapUsage();
+    applyUsageSnapshot(data.usage || {});
+  } catch (error) {
+    state.tmapUsage = {
+      ...state.tmapUsage,
+      loading: false,
+      configured: error.code !== 'TMAP_USAGE_STORAGE_NOT_CONFIGURED',
+      error: error.message || 'TMAP 사용량을 확인하지 못했습니다.',
+    };
+  }
+  renderTmapUsage();
+  if (state.parsed) {
+    renderBatchPanel();
+    renderDestinations();
+  }
+  return state.tmapUsage;
 }
 
 function simplifyPath(path, maxPoints = 320) {
@@ -220,8 +335,9 @@ function initializeDestinations(parsed) {
       lastCheckedAt: memory.savedAt || null,
     };
     const key = routeCacheKey(state.workplace, remembered);
-    if (key && state.routeCache[key]) {
-      destination.route = state.routeCache[key];
+    const cached = getFreshRouteCache(key);
+    if (cached) {
+      destination.route = cached;
       destination.routeStatus = 'complete';
     }
     return destination;
@@ -233,8 +349,9 @@ function invalidateRoutes() {
     destination.route = null;
     destination.routeStatus = 'pending';
     const key = routeCacheKey(state.workplace, destination.location);
-    if (key && state.routeCache[key]) {
-      destination.route = state.routeCache[key];
+    const cached = getFreshRouteCache(key);
+    if (cached) {
+      destination.route = cached;
       destination.routeStatus = 'complete';
     }
   });
@@ -275,6 +392,60 @@ function summarizeDestinations() {
   return summary;
 }
 
+function renderTmapUsage() {
+  if (!dom.tmap_usage_panel) return;
+  const usage = state.tmapUsage;
+  const used = Number(usage.used) || 0;
+  const officialLimit = Number(usage.officialLimit) || 1000;
+  const safeLimit = Number(usage.safeLimit) || 900;
+  const warningAt = Number(usage.warningAt) || 800;
+  const estimate = estimateRouteCalls();
+  const projected = used + estimate;
+
+  dom.tmap_usage_count.textContent = usage.loading || usage.error ? '—' : used.toLocaleString('ko-KR');
+  dom.tmap_usage_bar.style.width = usage.loading || usage.error
+    ? '0%'
+    : `${Math.min(100, Math.round((used / officialLimit) * 100))}%`;
+
+  dom.tmap_usage_panel.classList.remove('normal', 'warning', 'blocked', 'error');
+  if (usage.loading) {
+    dom.tmap_usage_panel.classList.add('normal');
+    dom.tmap_usage_status.textContent = '오늘 사용량을 확인하고 있어요.';
+    dom.tmap_usage_estimate.textContent = '왕복거리 1곳을 계산할 때 TMAP 경로조회 2회를 사용해요.';
+    return;
+  }
+
+  if (usage.error || usage.configured !== true) {
+    dom.tmap_usage_panel.classList.add('error');
+    dom.tmap_usage_status.textContent = '사용량 보호 연결을 확인해 주세요.';
+    dom.tmap_usage_estimate.textContent = '사용량을 확인할 수 없는 동안에는 신규 거리계산을 실행하지 않아요.';
+    return;
+  }
+
+  if (used >= safeLimit) {
+    dom.tmap_usage_panel.classList.add('blocked');
+    dom.tmap_usage_status.textContent = `오늘 신규 거리계산을 중단했어요. · 안전한도 ${safeLimit.toLocaleString('ko-KR')}회`;
+  } else if (used >= warningAt || projected > safeLimit) {
+    dom.tmap_usage_panel.classList.add('warning');
+    dom.tmap_usage_status.textContent = `오늘 사용량이 많아요. · 안전한도 ${safeLimit.toLocaleString('ko-KR')}회`;
+  } else {
+    dom.tmap_usage_panel.classList.add('normal');
+    dom.tmap_usage_status.textContent = `정상 사용 가능 · 안전한도 ${safeLimit.toLocaleString('ko-KR')}회`;
+  }
+
+  if (!state.parsed) {
+    dom.tmap_usage_estimate.textContent = `무료 제공량 ${officialLimit.toLocaleString('ko-KR')}회/일 · 왕복거리 1곳 = 경로조회 2회`;
+  } else if (!state.workplace) {
+    dom.tmap_usage_estimate.textContent = `근무지를 설정하면 이번 점검 예상 조회량을 계산해요. · 안전 여유 ${Math.max(0, safeLimit - used).toLocaleString('ko-KR')}회`;
+  } else if (estimate === 0) {
+    dom.tmap_usage_estimate.textContent = `새로 필요한 경로조회가 없어요. · 안전 여유 ${Math.max(0, safeLimit - used).toLocaleString('ko-KR')}회`;
+  } else if (projected > safeLimit) {
+    dom.tmap_usage_estimate.textContent = `이번 점검 최대 ${estimate.toLocaleString('ko-KR')}회 예상 · 실행 시 안전한도를 넘을 수 있어요.`;
+  } else {
+    dom.tmap_usage_estimate.textContent = `이번 점검 최대 ${estimate.toLocaleString('ko-KR')}회 예상 · 실행 후 약 ${projected.toLocaleString('ko-KR')}회`;
+  }
+}
+
 function renderBatchPanel() {
   const summary = summarizeDestinations();
   dom.batch_destination_count.textContent = summary.total;
@@ -287,14 +458,16 @@ function renderBatchPanel() {
   readiness.push(`<span class="readiness-item">거리 완료 ${summary.routeComplete}/${summary.total}곳</span>`);
   dom.batch_readiness.innerHTML = readiness.join('');
 
-  dom.bulk_inspect.disabled = state.busy;
+  const batchEstimatedCalls = estimateRouteCalls();
+  dom.bulk_inspect.disabled = state.busy || !usageAllows(batchEstimatedCalls);
   dom.bulk_inspect.textContent = state.lastBatchSummary && summary.routeComplete > 0 ? '거리점검 다시 시작' : '거리점검 시작';
   dom.stop_inspect.classList.toggle('hidden', !state.busy);
   dom.stop_inspect.disabled = state.stopRequested;
   dom.stop_inspect.textContent = state.stopRequested ? '중지 중…' : '점검 중지';
   dom.batch_complete_actions.classList.toggle('hidden', state.busy || (!state.batchStarted && summary.routeComplete === 0 && summary.failed === 0));
-  dom.retry_incomplete.disabled = state.busy || !state.destinations.some((item) => !item.location || item.searchStatus === 'error' || !item.route || item.routeStatus === 'error');
-  dom.recalculate_all.disabled = state.busy || !state.workplace;
+  dom.retry_incomplete.disabled = state.busy || !state.destinations.some((item) => !item.location || item.searchStatus === 'error' || !item.route || item.routeStatus === 'error') || !usageAllows(estimateRouteCalls());
+  dom.recalculate_all.disabled = state.busy || !state.workplace || !usageAllows(estimateRouteCalls({ forceRoutes: true, routeOnly: true }));
+  renderTmapUsage();
 }
 
 function renderDestinationCounts() {
@@ -376,7 +549,7 @@ function renderDestinations() {
   }).join('');
 
   dom.auto_search.disabled = state.busy || !state.parsed;
-  dom.calculate_all.disabled = state.busy || !state.parsed;
+  dom.calculate_all.disabled = state.busy || !state.parsed || !usageAllows(estimateRouteCalls({ routeOnly: true }));
 }
 
 function allResultRows() {
@@ -453,6 +626,7 @@ function renderResults() {
 }
 
 function renderAll() {
+  expireStaleTmapData();
   renderWorkplace();
   if (!state.parsed) return;
   dom.analysis_section.classList.remove('hidden');
@@ -546,24 +720,26 @@ function getDestination(key) {
 }
 
 function saveDestinationLocation(destination, location, source = 'manual') {
-  destination.location = location;
+  destination.lastCheckedAt = new Date().toISOString();
+  const storedLocation = { ...location, savedAt: destination.lastCheckedAt };
+  destination.location = storedLocation;
   destination.locationSource = source;
   destination.locationStatus = 'resolved';
   destination.searchStatus = 'resolved';
   destination.route = null;
   destination.routeStatus = 'pending';
   destination.searchError = '';
-  destination.lastCheckedAt = new Date().toISOString();
   state.destinationMemory[destination.key] = {
-    location,
+    location: storedLocation,
     source,
     originalName: destination.originalName,
     savedAt: destination.lastCheckedAt,
   };
   saveDestinationMemory(state.destinationMemory);
   const key = routeCacheKey(state.workplace, location);
-  if (key && state.routeCache[key]) {
-    destination.route = state.routeCache[key];
+  const cached = getFreshRouteCache(key);
+  if (cached) {
+    destination.route = cached;
     destination.routeStatus = 'complete';
   }
 }
@@ -617,6 +793,25 @@ function validateInspectionPrerequisites() {
   return true;
 }
 
+async function ensureUsageCapacity(calls) {
+  const requested = Math.max(0, Number(calls) || 0);
+  if (requested === 0) return true;
+
+  const usage = await refreshTmapUsage({ silent: true });
+  if (usage.error || usage.configured !== true) {
+    showToast('TMAP 사용량을 확인할 수 없어 거리 계산을 시작하지 않았어요.', 'error');
+    return false;
+  }
+
+  const projected = (Number(usage.used) || 0) + requested;
+  const safeLimit = Number(usage.safeLimit) || 900;
+  if (projected > safeLimit) {
+    showToast(`이번 점검은 최대 ${requested.toLocaleString('ko-KR')}회가 필요해 안전한도 ${safeLimit.toLocaleString('ko-KR')}회를 넘을 수 있어요.`, 'error');
+    return false;
+  }
+  return true;
+}
+
 async function searchDestination(destination) {
   if (destination.ambiguous) {
     destination.searchStatus = 'needs';
@@ -650,8 +845,9 @@ async function searchDestination(destination) {
 async function calculateDestination(destination, { force = false } = {}) {
   if (!state.workplace || !destination.location) return false;
   const key = routeCacheKey(state.workplace, destination.location);
-  if (!force && state.routeCache[key]) {
-    destination.route = state.routeCache[key];
+  const cached = getFreshRouteCache(key);
+  if (!force && cached) {
+    destination.route = cached;
     destination.routeStatus = 'complete';
     destination.searchError = '';
     return true;
@@ -659,10 +855,13 @@ async function calculateDestination(destination, { force = false } = {}) {
 
   destination.routeStatus = 'calculating';
   try {
-    const route = compactRoute(await calculateRoundTrip(
+    const response = await calculateRoundTrip(
       { ...state.workplace, name: state.workplace.name || '근무지' },
       { ...destination.location, name: destination.location.name || destination.originalName },
-    ));
+    );
+    if (response.usage) applyUsageSnapshot(response.usage);
+    const route = compactRoute(response);
+    delete route.usage;
     if (!Number.isFinite(route.outbound?.distance) || !Number.isFinite(route.inbound?.distance)) {
       throw new Error('가는 길과 오는 길을 모두 확인하지 못했어요.');
     }
@@ -671,15 +870,25 @@ async function calculateDestination(destination, { force = false } = {}) {
     destination.searchError = '';
     state.routeCache[key] = { ...route, cachedAt: new Date().toISOString() };
     saveRouteCache(state.routeCache);
+    renderTmapUsage();
     return true;
   } catch (error) {
+    if (error.usage) applyUsageSnapshot(error.usage);
+    if (error.code === 'TMAP_DAILY_SAFE_LIMIT_REACHED' || String(error.code || '').startsWith('TMAP_USAGE_STORAGE_')) {
+      state.stopRequested = true;
+    }
     destination.route = null;
     destination.routeStatus = 'error';
     destination.searchError = error.code === 'TMAP_APP_KEY_NOT_CONFIGURED'
       ? '지도 API 키가 필요해요.'
       : error.code === 'TMAP_AUTH_FAILED'
         ? 'TMAP 상품 사용 설정을 확인해 주세요.'
-        : (error.message || '거리 계산에 실패했어요.');
+        : error.code === 'TMAP_DAILY_SAFE_LIMIT_REACHED'
+          ? '오늘 거리조회 안전한도에 도달했어요.'
+          : String(error.code || '').startsWith('TMAP_USAGE_STORAGE_')
+            ? 'TMAP 사용량 보호 연결을 확인해 주세요.'
+            : (error.message || '거리 계산에 실패했어요.');
+    renderTmapUsage();
     return false;
   }
 }
@@ -690,6 +899,10 @@ function inspectionSubcounts(searchDone, searchTotal, routeDone, routeTotal) {
 
 async function runInspection({ searchOnly = false, routeOnly = false, forceRoutes = false } = {}) {
   if (state.busy || !validateInspectionPrerequisites()) return;
+  if (!searchOnly) {
+    const estimatedCalls = estimateRouteCalls({ forceRoutes, routeOnly });
+    if (!(await ensureUsageCapacity(estimatedCalls))) return;
+  }
 
   state.busy = true;
   state.stopRequested = false;
@@ -1003,8 +1216,8 @@ function confirmPendingLocation() {
   const location = state.modal.pending;
   if (!location) return;
   if (state.modal.mode === 'workplace') {
-    state.workplace = location;
-    saveWorkplace(location);
+    state.workplace = { ...location, savedAt: new Date().toISOString() };
+    saveWorkplace(state.workplace);
     invalidateRoutes();
     showToast('근무지를 저장했어요. 이제 거리점검을 시작할 수 있어요.');
   } else {
@@ -1156,12 +1369,6 @@ function bindEvents() {
   dom.retry_incomplete.addEventListener('click', () => runInspection());
   dom.recalculate_all.addEventListener('click', () => {
     if (!window.confirm('저장된 거리 결과를 무시하고 위치가 확인된 출장지를 모두 다시 계산할까요?')) return;
-    state.destinations.forEach((destination) => {
-      if (destination.location) {
-        destination.route = null;
-        destination.routeStatus = 'pending';
-      }
-    });
     runInspection({ forceRoutes: true });
   });
   dom.auto_search.addEventListener('click', autoSearchDestinations);
@@ -1190,6 +1397,7 @@ function bindEvents() {
       openLocationModal('destination', key);
     } else if (button.dataset.action === 'calculate-one' && destination) {
       if (!validateInspectionPrerequisites()) return;
+      if (!(await ensureUsageCapacity(2))) return;
       state.busy = true;
       renderAll();
       const ok = await calculateDestination(destination, { force: destination.routeStatus === 'error' });
@@ -1265,3 +1473,7 @@ bindEvents();
 renderWorkplace();
 setStep(1);
 checkApi();
+refreshTmapUsage();
+window.setInterval(() => {
+  if (!state.busy && expireStaleTmapData()) renderAll();
+}, 5 * 60 * 1000);

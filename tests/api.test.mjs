@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import health from '../api/tmap-health.js';
 import search from '../api/tmap-search.js';
 import route from '../api/tmap-route.js';
+import usage from '../api/tmap-usage.js';
 
 function makeRes() {
   return {
@@ -15,6 +16,14 @@ function makeRes() {
 }
 
 delete process.env.TMAP_APP_KEY;
+
+for (const key of [
+  'STORAGE_URL', 'STORAGE_TOKEN',
+  'STORAGE_KV_REST_API_URL', 'STORAGE_KV_REST_API_TOKEN',
+  'KV_REST_API_URL', 'KV_REST_API_TOKEN',
+  'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN',
+]) delete process.env[key];
+
 let res = makeRes();
 await health({ method: 'GET' }, res);
 assert.equal(res.code, 200);
@@ -38,4 +47,10 @@ res = makeRes();
 await route({ method: 'POST', body: { start: { lat: 37.5, lon: 127 }, end: { lat: 37.51, lon: 127.01 } } }, res);
 assert.equal(res.code, 503);
 assert.equal(JSON.parse(res.body).code, 'TMAP_APP_KEY_NOT_CONFIGURED');
+
+res = makeRes();
+await usage({ method: 'GET' }, res);
+assert.equal(res.code, 503);
+assert.equal(JSON.parse(res.body).code, 'TMAP_USAGE_STORAGE_NOT_CONFIGURED');
+
 console.log('API fallback test passed.');

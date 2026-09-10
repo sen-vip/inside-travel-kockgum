@@ -1,4 +1,5 @@
-import { json, safeText, tmapFetch, toNumber } from './_tmap.js';
+import { getAppKey, json, safeText, tmapFetch, toNumber } from './_tmap.js';
+import { getUsageLimits, reserveRouteCalls } from './_usage.js';
 
 function validatePoint(point) {
   const lat = toNumber(point?.lat);
@@ -60,6 +61,27 @@ export default async function handler(req, res) {
   const start = validatePoint(req.body?.start);
   const end = validatePoint(req.body?.end);
   if (!start || !end) return json(res, 400, { ok: false, message: '출발지와 도착지 좌표를 확인해 주세요.' });
+  if (!getAppKey()) return json(res, 503, { ok: false, code: 'TMAP_APP_KEY_NOT_CONFIGURED', message: 'TMAP_APP_KEY 환경변수가 설정되지 않았습니다.' });
+
+  let reservation;
+  try {
+    reservation = await reserveRouteCalls(getUsageLimits().routeCallsPerRoundTrip);
+    if (!reservation.allowed) {
+      return json(res, 429, {
+        ok: false,
+        code: 'TMAP_DAILY_SAFE_LIMIT_REACHED',
+        message: `오늘 TMAP 거리조회 안전한도 ${reservation.safeLimit.toLocaleString('ko-KR')}회에 도달할 수 있어 거리 계산을 중단했습니다.`,
+        usage: reservation,
+      });
+    }
+  } catch (error) {
+    // 사용량을 확인할 수 없으면 TMAP 호출을 진행하지 않는다.
+    return json(res, error.status || 503, {
+      ok: false,
+      code: error.code || 'TMAP_USAGE_STORAGE_FAILED',
+      message: error.message || 'TMAP 사용량을 확인하지 못해 거리 계산을 중단했습니다.',
+    });
+  }
 
   try {
     const [outbound, inbound] = await Promise.all([
@@ -73,12 +95,14 @@ export default async function handler(req, res) {
       inbound,
       totalDistance: outbound.distance + inbound.distance,
       calculatedAt: new Date().toISOString(),
+      usage: reservation,
     });
   } catch (error) {
     return json(res, error.status || 500, {
       ok: false,
       code: error.code || 'TMAP_ROUTE_FAILED',
       message: error.message || '보행경로 계산에 실패했습니다.',
+      usage: reservation,
     });
   }
 }

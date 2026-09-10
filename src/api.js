@@ -4,6 +4,8 @@ async function parseResponse(response) {
     const error = new Error(data.message || `요청에 실패했습니다. (${response.status})`);
     error.code = data.code || 'API_ERROR';
     error.status = response.status;
+    error.usage = data.usage || null;
+    error.details = data;
     throw error;
   }
   return data;
@@ -11,6 +13,12 @@ async function parseResponse(response) {
 
 export async function getApiHealth() {
   const response = await fetch('/api/tmap-health', { headers: { Accept: 'application/json' } });
+  return parseResponse(response);
+}
+
+
+export async function getTmapUsage() {
+  const response = await fetch('/api/tmap-usage', { headers: { Accept: 'application/json' } });
   return parseResponse(response);
 }
 

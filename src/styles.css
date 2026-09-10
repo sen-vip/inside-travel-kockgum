@@ -630,3 +630,30 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .privacy-actions { width: 100%; margin-left: 34px; justify-content: flex-start; }
   .privacy-link { margin-left: 0; }
 }
+
+/* v0.2.10 TMAP 사용량 보호 */
+.tmap-usage-panel { margin: 0 28px 18px; padding: 15px 16px; border: 1px solid var(--slate-200); border-radius: 14px; background: #fbfcff; }
+.tmap-usage-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tmap-usage-head > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.tmap-usage-label { color: var(--slate-600); font-size: 11px; font-weight: 800; }
+.tmap-usage-head strong { color: var(--slate-950); font-size: 14px; white-space: nowrap; }
+.tmap-safe-badge { flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; color: var(--slate-600); background: var(--slate-100); font-size: 9.5px; font-weight: 850; }
+.tmap-usage-track { position: relative; height: 7px; margin: 10px 0 9px; overflow: hidden; border-radius: 999px; background: var(--slate-200); }
+.tmap-usage-bar { width: 0; height: 100%; border-radius: inherit; background: var(--blue); transition: width .25s ease; }
+.tmap-safe-marker { position: absolute; top: -2px; bottom: -2px; left: 90%; width: 2px; background: rgba(71,85,105,.5); }
+.tmap-usage-copy strong, .tmap-usage-copy span { display: block; }
+.tmap-usage-copy strong { color: var(--slate-800); font-size: 11.5px; }
+.tmap-usage-copy span { margin-top: 3px; color: var(--slate-500); font-size: 10.5px; line-height: 1.55; }
+.tmap-usage-panel.warning { border-color: #ead9b9; background: #fffbf2; }
+.tmap-usage-panel.warning .tmap-usage-bar { background: var(--amber); }
+.tmap-usage-panel.warning .tmap-safe-badge { color: var(--amber); background: var(--amber-soft); }
+.tmap-usage-panel.blocked, .tmap-usage-panel.error { border-color: #efc7c4; background: #fff8f7; }
+.tmap-usage-panel.blocked .tmap-usage-bar, .tmap-usage-panel.error .tmap-usage-bar { background: var(--coral); }
+.tmap-usage-panel.blocked .tmap-safe-badge, .tmap-usage-panel.error .tmap-safe-badge { color: var(--coral); background: var(--coral-soft); }
+.tmap-usage-panel.blocked .tmap-usage-copy strong, .tmap-usage-panel.error .tmap-usage-copy strong { color: var(--coral); }
+
+@media (max-width: 680px) {
+  .tmap-usage-panel { margin: 0 16px 16px; padding: 14px; }
+  .tmap-usage-head { align-items: flex-start; }
+  .tmap-usage-head > div { align-items: flex-start; flex-direction: column; gap: 2px; }
+}
