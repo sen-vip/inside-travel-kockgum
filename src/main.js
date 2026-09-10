@@ -1249,23 +1249,58 @@ async function performPlaceSearch(query) {
   }
 }
 
-function confirmPendingLocation() {
+async function confirmPendingLocation() {
   const location = state.modal.pending;
   if (!location) return;
+
   if (state.modal.mode === 'workplace') {
     state.workplace = { ...location, savedAt: new Date().toISOString() };
     saveWorkplace(state.workplace);
     invalidateRoutes();
+    closeLocationModal();
+    renderAll();
     showToast('근무지를 저장했어요. 이제 거리점검을 시작할 수 있어요.');
-  } else {
-    const destination = getDestination(state.modal.key);
-    if (destination) {
-      saveDestinationLocation(destination, location, 'manual');
-      showToast(`${destination.originalName} 위치를 확정했어요. ${destination.count}건에 함께 적용됩니다.`);
-    }
+    return;
   }
+
+  const destination = getDestination(state.modal.key);
+  if (!destination) return;
+
+  saveDestinationLocation(destination, location, 'manual');
   closeLocationModal();
   renderAll();
+
+  // 위치를 수동 확정한 뒤에는 사용자가 별도로 '거리 계산'을 다시 누르지 않아도
+  // 해당 출장지의 왕복거리를 즉시 계산한다. 동일 경로의 유효 캐시가 있으면
+  // saveDestinationLocation()에서 이미 적용되므로 TMAP 호출은 발생하지 않는다.
+  if (destination.routeStatus === 'complete' && destination.route) {
+    showToast(`${destination.originalName} 위치를 확정하고 저장된 왕복거리를 적용했어요. ${destination.count}건에 함께 적용됩니다.`);
+    return;
+  }
+
+  if (!state.workplace) {
+    showToast(`${destination.originalName} 위치를 확정했어요. 근무지를 설정하면 왕복거리를 계산할 수 있어요.`);
+    return;
+  }
+
+  if (!(await ensureUsageCapacity(2))) {
+    // 위치 자체는 확정해 둔다. 사용량 보호 때문에 자동 계산만 보류한다.
+    renderAll();
+    return;
+  }
+
+  state.busy = true;
+  renderAll();
+  const ok = await calculateDestination(destination);
+  state.busy = false;
+  renderAll();
+
+  showToast(
+    ok
+      ? `${destination.originalName} 위치를 확정하고 왕복거리도 계산했어요. ${destination.count}건에 함께 적용됩니다.`
+      : `${destination.originalName} 위치는 확정했지만 거리 계산에 실패했어요. 다시 계산해 주세요.`,
+    ok ? 'success' : 'error',
+  );
 }
 
 function resetCurrent() {
