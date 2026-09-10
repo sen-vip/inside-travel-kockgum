@@ -46,3 +46,11 @@ export function clearDestinationStorage() {
   localStorage.removeItem(KEYS.destinations);
   localStorage.removeItem(KEYS.routes);
 }
+
+export function clearAllStorage() {
+  Object.values(KEYS).forEach((key) => localStorage.removeItem(key));
+}
+
+export function storageKeys() {
+  return { ...KEYS };
+}

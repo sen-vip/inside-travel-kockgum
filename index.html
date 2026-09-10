@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="에듀파인 관내여비 내역을 올리면 출장지별 보행 왕복거리를 계산해 2km 이내 여부를 보여주는 업무 보조 웹앱" />
+  <meta name="description" content="에듀파인 관내여비 자료를 브라우저에서 읽어 출장지별 보행 왕복거리와 2km 이내 여부를 확인하는 학교 행정실 업무 보조 도구" />
   <meta name="theme-color" content="#ffffff" />
   <title>관내여비 콕검</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -18,6 +18,7 @@
         </a>
         <div class="header-actions">
           <span id="api-status" class="status-chip neutral"><span class="status-dot"></span>지도 API 확인 중</span>
+          <button id="help-button" class="button ghost small" type="button">도움말</button>
           <button id="reset-all" class="button ghost small" type="button">새로 시작</button>
         </div>
       </div>
@@ -25,9 +26,9 @@
 
     <main id="top" class="page-shell">
       <section class="hero">
-        <p class="eyebrow">급여담당자용 관내출장 거리 점검</p>
-        <h1>관내출장 왕복 2km,<br /><span>한눈에 확인</span></h1>
-        <p class="hero-copy">에듀파인 관내여비 내역을 올리면 출장지별 보행 왕복거리를 계산해 2km 이내 여부를 보여드려요.</p>
+        <p class="eyebrow">거리점검</p>
+        <h1>관내출장,<br /><span>거리부터 콕 검토해요.</span></h1>
+        <p class="hero-copy">에듀파인 관내여비 자료를 올리면 출장지별 보행 왕복거리를 계산해 2km 이내 여부를 확인해요.</p>
       </section>
 
       <nav class="stepper" aria-label="작업 단계">
@@ -35,16 +36,49 @@
         <div class="step-line"></div>
         <div class="step" data-step="2"><span>2</span><strong>근무지 설정</strong></div>
         <div class="step-line"></div>
-        <div class="step" data-step="3"><span>3</span><strong>일괄검사</strong></div>
+        <div class="step" data-step="3"><span>3</span><strong>거리점검</strong></div>
         <div class="step-line"></div>
         <div class="step" data-step="4"><span>4</span><strong>결과 확인</strong></div>
       </nav>
 
       <section id="upload-section" class="surface upload-surface">
-        <div class="section-heading compact">
+        <div class="section-heading compact upload-heading">
           <div>
             <p class="section-kicker">1. 에듀파인 파일</p>
-            <h2>관내여비 파일을 가져오세요</h2>
+            <h2>먼저 관내출장 엑셀을 내려받아 주세요</h2>
+            <p>별도로 자료를 만들지 않고 에듀파인에서 내려받은 파일을 그대로 사용합니다.</p>
+          </div>
+          <button class="text-link-button" type="button" data-open-help="file">처음 사용하시나요? 도움말</button>
+        </div>
+
+        <div class="edufine-path-primary" aria-label="학교회계 에듀파인 파일 경로">
+          <div class="path-title-row">
+            <span class="file-path-label">학교회계</span>
+            <strong>출장여비(관내)에서 엑셀을 저장하세요</strong>
+          </div>
+          <div class="path-steps">
+            <span>학교회계</span><b>›</b><span>지출관리</span><b>›</b><span>지출지원</span><b>›</b><span>출장여비</span><b>›</b><span class="current">출장여비(관내)</span>
+          </div>
+          <div class="export-step"><span>마지막으로</span><strong>[출력]</strong><b>→</b><strong>[엑셀 저장]</strong></div>
+        </div>
+
+        <details class="file-path-guide secondary-guide">
+          <summary>
+            <span>교특회계에서 받는 경우</span>
+            <span class="guide-chevron" aria-hidden="true">⌄</span>
+          </summary>
+          <div class="file-path-content single-path">
+            <div class="file-path-card">
+              <span class="file-path-label">교특회계</span>
+              <p>재정사업관리 <b>›</b> 사업재정관리 <b>›</b> 재무관리 <b>›</b> 관내여비관리 <b>›</b> 엑셀 저장</p>
+            </div>
+          </div>
+        </details>
+
+        <div class="upload-ready">
+          <div>
+            <strong>준비됐나요?</strong>
+            <span>다운받은 파일을 그대로 넣어주세요. 파일 내용을 수정하거나 열을 지울 필요가 없습니다.</span>
           </div>
           <span class="support-label">.xls · .xlsx 지원</span>
         </div>
@@ -53,34 +87,20 @@
           <div class="drop-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>
           </div>
-          <strong>파일을 놓거나 눌러서 선택하세요</strong>
-          <span>에듀파인에서 출력한 관내여비 내역 또는 대상목록 파일</span>
+          <strong>파일을 놓거나 눌러서 선택</strong>
+          <span>에듀파인 출장여비(관내)에서 출력한 원본 엑셀</span>
           <input id="file-input" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
         </div>
 
-        <details class="file-path-guide">
-          <summary>
-            <span>에듀파인 파일은 어디서 받나요?</span>
-            <span class="guide-chevron" aria-hidden="true">⌄</span>
-          </summary>
-          <div class="file-path-content">
-            <div class="file-path-card">
-              <span class="file-path-label">학교회계</span>
-              <p>학교회계 <b>›</b> 지출관리 <b>›</b> 지출지원 <b>›</b> 출장여비 <b>›</b> 출장여비(관내) <b>›</b> [출력] <b>›</b> 엑셀 저장</p>
-            </div>
-            <div class="file-path-card">
-              <span class="file-path-label">교특회계</span>
-              <p>재정사업관리 <b>›</b> 사업재정관리 <b>›</b> 재무관리 <b>›</b> 관내여비관리 <b>›</b> 엑셀 저장</p>
-            </div>
-            <p class="file-path-footnote">위 두 메뉴에서 내려받은 .xls, .xlsx 파일을 모두 사용할 수 있어요.</p>
-          </div>
-        </details>
-
         <div class="privacy-note">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-2.9 8.4-7 10-4.1-1.6-7-5.4-7-10V6l7-3Z" /><path d="m9 12 2 2 4-4" /></svg>
-          <div>
-            <strong>파일은 이 브라우저에서만 처리됩니다.</strong>
-            <span>지도 API에는 장소 검색어와 좌표만 전달되며, 출장자명·출장목적·금액은 전송하지 않습니다.</span>
+          <div class="privacy-copy">
+            <strong>파일은 서버에 업로드되지 않아요.</strong>
+            <span>에듀파인 엑셀은 현재 브라우저에서 읽고 처리합니다. 지도 확인에는 필요한 장소명과 좌표만 전달합니다.</span>
+          </div>
+          <div class="privacy-actions">
+            <button id="privacy-details" class="text-link-button privacy-link" type="button">자세히</button>
+            <button id="clear-all-storage-upload" class="text-link-button privacy-clear-link" type="button">저장정보 삭제</button>
           </div>
         </div>
         <div id="upload-error" class="inline-alert error hidden" role="alert"></div>
@@ -121,21 +141,22 @@
             </div>
           </div>
           <div class="storage-actions">
-            <button id="clear-workplace-storage" class="text-button" type="button">저장된 근무지 초기화</button>
-            <button id="clear-destination-storage" class="text-button" type="button">저장된 출장지 정보 초기화</button>
+            <button id="clear-all-storage" class="text-button storage-clear-all" type="button">저장정보 모두 삭제</button>
+            <button id="clear-workplace-storage" class="text-button" type="button">근무지만 삭제</button>
+            <button id="clear-destination-storage" class="text-button" type="button">출장지 정보만 삭제</button>
           </div>
         </section>
 
         <section class="surface batch-surface">
           <div class="batch-hero">
             <div>
-              <p class="section-kicker">3. 일괄검사</p>
-              <h2><span id="batch-destination-count">0</span>곳의 왕복거리를 한 번에 확인하세요</h2>
-              <p>저장된 위치를 먼저 적용하고 명확한 출장지는 자동 확인합니다. 위치가 확인된 장소는 보행 왕복거리와 2km 여부를 이어서 계산해요.</p>
+              <p class="section-kicker">3. 거리점검</p>
+              <h2><span id="batch-destination-count">0</span>개 출장지의 거리를 확인하세요</h2>
+              <p>저장된 위치를 먼저 적용하고, 확인된 출장지는 근무지와의 보행 왕복거리와 2km 여부를 계산합니다.</p>
             </div>
             <div class="batch-actions">
-              <button id="bulk-inspect" class="button primary large" type="button">일괄검사 시작</button>
-              <button id="stop-inspect" class="button danger hidden" type="button">검사 중지</button>
+              <button id="bulk-inspect" class="button primary large" type="button">거리점검 시작</button>
+              <button id="stop-inspect" class="button danger hidden" type="button">점검 중지</button>
             </div>
           </div>
           <div id="batch-readiness" class="batch-readiness"></div>
@@ -146,8 +167,8 @@
             <div id="progress-subcounts" class="progress-subcounts"></div>
           </div>
           <div id="batch-complete-actions" class="batch-complete-actions hidden">
-            <button id="retry-incomplete" class="button secondary" type="button">미완료 항목만 다시 검사</button>
-            <button id="recalculate-all" class="button ghost" type="button">전체 다시 검사</button>
+            <button id="retry-incomplete" class="button secondary" type="button">미완료 항목 다시 점검</button>
+            <button id="recalculate-all" class="button ghost" type="button">전체 다시 점검</button>
           </div>
         </section>
 
@@ -192,8 +213,8 @@
           <div class="section-heading result-heading">
             <div>
               <p class="section-kicker">4. 출장별 결과</p>
-              <h2>2km 여부를 한눈에 확인하세요</h2>
-              <p>입력하거나 완료 처리할 필요 없이, 왕복거리와 확인할 사항만 빠르게 살펴보는 화면입니다.</p>
+              <h2>출장별 왕복거리와 2km 여부를 확인하세요</h2>
+              <p>왕복거리와 2km 판정, 추가로 확인할 사항을 출장별로 확인합니다.</p>
             </div>
             <button id="export-results" class="button primary" type="button">결과 엑셀 내려받기</button>
           </div>
@@ -231,7 +252,7 @@
 
       <footer class="app-footer">
         <div class="footer-main">
-          <p><strong>관내여비 콕검 v0.2.8</strong><span class="footer-separator">·</span>제작 senvip</p>
+          <p><strong>관내여비 콕검 v0.2.9</strong><span class="footer-separator">·</span>제작 senvip</p>
           <a class="github-link" href="https://github.com/sen-vip" target="_blank" rel="noopener noreferrer" aria-label="senvip GitHub 새 창에서 보기">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8a9.4 9.4 0 0 0-3 18.3c.5.1.6-.2.6-.5v-1.8c-2.5.5-3-1-3-1-.4-1-1-1.3-1-1.3-.8-.5.1-.5.1-.5.9.1 1.4.9 1.4.9.8 1.4 2.1 1 2.6.8.1-.6.3-1 .6-1.3-2-.2-4.1-1-4.1-4.6 0-1 .4-1.9 1-2.5-.1-.2-.4-1.2.1-2.5 0 0 .8-.3 2.6 1a9 9 0 0 1 4.8 0c1.8-1.2 2.6-1 2.6-1 .5 1.3.2 2.3.1 2.5.6.7 1 1.5 1 2.5 0 3.6-2.2 4.4-4.2 4.6.3.3.6.8.6 1.6v2.4c0 .4.2.6.6.5A9.4 9.4 0 0 0 12 2.8Z"/></svg>
             <span>GitHub에서 보기</span>
@@ -240,6 +261,70 @@
         <p class="footer-note">최종 지급 판단은 관련 지침과 기관 기준을 확인해 주세요.</p>
       </footer>
     </main>
+  </div>
+
+
+  <div id="help-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <div class="modal-card help-modal-card">
+      <div class="modal-header help-header">
+        <div><p class="section-kicker">도움말</p><h2 id="help-title">관내여비 콕검 사용 안내</h2></div>
+        <button id="close-help" class="icon-button" type="button" aria-label="도움말 닫기">×</button>
+      </div>
+      <div class="help-content">
+        <p class="help-lead">에듀파인 관내출장 자료를 바탕으로 <strong>근무지와 출장지의 보행 왕복거리</strong>를 확인하는 도구입니다.</p>
+
+        <section id="help-file" class="help-section">
+          <h3>📁 에듀파인 파일 받기</h3>
+          <p>별도 자료를 만들지 않고 에듀파인에서 내려받은 원본 엑셀을 그대로 사용하세요.</p>
+          <div class="help-path-box"><strong>학교회계</strong><span>학교회계 → 지출관리 → 지출지원 → 출장여비 → 출장여비(관내) → [출력] → [엑셀 저장]</span></div>
+          <details class="help-details"><summary>교특회계 경로</summary><p>재정사업관리 → 사업재정관리 → 재무관리 → 관내여비관리 → 엑셀 저장</p></details>
+          <p class="help-note">`.xls`, `.xlsx` 파일을 지원하며 열을 삭제하거나 내용을 다시 정리할 필요가 없습니다.</p>
+        </section>
+
+        <section class="help-section">
+          <h3>🔎 거리점검 방법</h3>
+          <ol class="help-steps">
+            <li><strong>파일 가져오기</strong><span>에듀파인에서 내려받은 관내여비 엑셀을 선택합니다.</span></li>
+            <li><strong>근무지 설정</strong><span>실제 출장 출발 위치에 가까운 학교 정문 또는 주 출입구를 지정합니다.</span></li>
+            <li><strong>거리점검</strong><span>출장지 위치를 확인한 뒤 근무지 ↔ 출장지 보행 왕복거리를 계산합니다.</span></li>
+            <li><strong>결과 확인</strong><span>출장별 왕복거리와 2km 여부, 추가 확인사항을 확인합니다.</span></li>
+          </ol>
+        </section>
+
+        <section class="help-section warning-help">
+          <h3>⚠️ 결과는 이렇게 봐주세요</h3>
+          <p>콕검의 거리 결과는 <strong>출장여비 검토를 돕기 위한 확인자료</strong>입니다. 지도에서 계산한 보행거리는 실제 출장 경로와 차이가 있을 수 있습니다.</p>
+          <ul>
+            <li>장소명이 불분명하거나 같은 이름의 장소가 여러 곳인 경우</li>
+            <li>학교 또는 출장지의 실제 출입구가 지도 위치와 다른 경우</li>
+            <li>왕복 2km 기준과 가까운 경우</li>
+            <li>실제 이동수단이나 교통비 발생 여부 확인이 필요한 경우</li>
+          </ul>
+          <p><strong>최종 여비 지급 여부는 관련 여비 지침과 소속 기관의 적용 기준을 확인해 판단해 주세요.</strong></p>
+        </section>
+
+        <section id="help-privacy" class="help-section privacy-help">
+          <h3>🔒 개인정보는 어떻게 처리하나요?</h3>
+          <ul>
+            <li>원본 에듀파인 엑셀은 서버에 업로드하지 않고 현재 브라우저에서 읽고 처리합니다.</li>
+            <li>출장자명·출장목적·여비금액은 지도 서비스로 전송하지 않습니다.</li>
+            <li>장소 검색에는 사용자가 입력하거나 출장지에서 정리한 지도 검색용 장소명이, 거리 계산에는 필요한 출발·도착 좌표가 전달됩니다.</li>
+            <li>근무지와 사용자가 확인한 출장지 이름·위치, 거리 캐시는 다음 사용을 위해 이 브라우저에 저장될 수 있습니다.</li>
+          </ul>
+          <p>공용 PC이거나 저장정보를 남기고 싶지 않다면 사용 후 <strong>저장정보 모두 삭제</strong>를 이용하세요.</p>
+        </section>
+
+        <section class="help-section">
+          <h3>💡 잘 안 될 때</h3>
+          <div class="faq-list">
+            <details><summary>출장지가 엉뚱한 곳으로 검색돼요.</summary><p>정확한 장소명이나 도로명주소로 다시 검색한 뒤 실제 위치를 선택하세요.</p></details>
+            <details><summary>같은 출장지가 여러 번 있어요.</summary><p>같은 출장지는 한 번만 위치를 확인합니다. 위치를 수정하면 연결된 출장 건의 거리도 함께 갱신됩니다.</p></details>
+            <details><summary>엑셀 파일을 읽지 못해요.</summary><p>에듀파인에서 내려받은 원본 `.xls` 또는 `.xlsx` 파일인지 확인하세요. 가능하면 변환하거나 내용을 수정하지 않은 파일로 다시 시도하세요.</p></details>
+            <details><summary>2km 이내면 무조건 여비를 지급하지 않나요?</summary><p>아닙니다. 콕검은 거리 확인을 돕는 도구입니다. 실제 이동수단, 교통비 발생 여부 및 관련 지침을 함께 확인해 최종 판단해 주세요.</p></details>
+          </div>
+        </section>
+      </div>
+    </div>
   </div>
 
   <div id="location-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">

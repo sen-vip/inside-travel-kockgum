@@ -15,17 +15,23 @@ export async function getApiHealth() {
 }
 
 export async function searchPlaces(query) {
-  const response = await fetch(`/api/tmap-search?q=${encodeURIComponent(query)}`, {
-    headers: { Accept: 'application/json' },
+  const response = await fetch('/api/tmap-search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ query }),
   });
   return parseResponse(response);
 }
+
 
 export async function calculateRoundTrip(start, end) {
   const response = await fetch('/api/tmap-route', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ start, end }),
+    body: JSON.stringify({
+      start: { lat: start?.lat, lon: start?.lon },
+      end: { lat: end?.lat, lon: end?.lon },
+    }),
   });
   return parseResponse(response);
 }

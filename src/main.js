@@ -5,6 +5,7 @@ import './styles.css';
 import { parseEdufineWorkbook } from './parser.js';
 import { calculateRoundTrip, getApiHealth, searchPlaces } from './api.js';
 import {
+  clearAllStorage,
   clearDestinationStorage,
   loadDestinationMemory,
   loadRouteCache,
@@ -16,10 +17,10 @@ import {
 import { exportResults, statusFor } from './exporter.js';
 
 const dom = Object.fromEntries([
-  'api-status', 'reset-all', 'drop-zone', 'file-input', 'upload-error', 'analysis-section',
+  'api-status', 'help-button', 'reset-all', 'drop-zone', 'file-input', 'upload-error', 'analysis-section',
   'file-name', 'file-detail', 'metric-trips', 'metric-travelers', 'metric-destinations',
   'set-workplace', 'workplace-empty', 'workplace-card', 'workplace-name', 'workplace-address',
-  'view-workplace', 'change-workplace', 'clear-workplace-storage', 'clear-destination-storage',
+  'view-workplace', 'change-workplace', 'clear-all-storage', 'clear-workplace-storage', 'clear-destination-storage',
   'batch-destination-count', 'bulk-inspect', 'stop-inspect', 'batch-readiness',
   'batch-complete-actions', 'retry-incomplete', 'recalculate-all',
   'auto-search', 'calculate-all', 'progress-panel', 'progress-title', 'progress-count',
@@ -30,7 +31,8 @@ const dom = Object.fromEntries([
   'result-filters', 'result-search', 'result-body', 'result-empty',
   'location-modal', 'modal-kicker', 'modal-title', 'close-modal', 'place-search-form',
   'place-search-input', 'candidate-loading', 'candidate-list', 'candidate-empty',
-  'pending-location', 'pending-name', 'pending-address', 'confirm-location', 'toast',
+  'pending-location', 'pending-name', 'pending-address', 'confirm-location',
+  'help-modal', 'close-help', 'privacy-details', 'clear-all-storage-upload', 'toast',
 ].map((id) => [id.replaceAll('-', '_'), document.getElementById(id)]));
 
 const state = {
@@ -286,10 +288,10 @@ function renderBatchPanel() {
   dom.batch_readiness.innerHTML = readiness.join('');
 
   dom.bulk_inspect.disabled = state.busy;
-  dom.bulk_inspect.textContent = state.lastBatchSummary && summary.routeComplete > 0 ? '일괄검사 다시 시작' : '일괄검사 시작';
+  dom.bulk_inspect.textContent = state.lastBatchSummary && summary.routeComplete > 0 ? '거리점검 다시 시작' : '거리점검 시작';
   dom.stop_inspect.classList.toggle('hidden', !state.busy);
   dom.stop_inspect.disabled = state.stopRequested;
-  dom.stop_inspect.textContent = state.stopRequested ? '중지 중…' : '검사 중지';
+  dom.stop_inspect.textContent = state.stopRequested ? '중지 중…' : '점검 중지';
   dom.batch_complete_actions.classList.toggle('hidden', state.busy || (!state.batchStarted && summary.routeComplete === 0 && summary.failed === 0));
   dom.retry_incomplete.disabled = state.busy || !state.destinations.some((item) => !item.location || item.searchStatus === 'error' || !item.route || item.routeStatus === 'error');
   dom.recalculate_all.disabled = state.busy || !state.workplace;
@@ -334,7 +336,7 @@ function renderDestinations() {
     const status = destinationStatus(destination);
     const expanded = state.expanded.has(destination.key);
     const locationName = destination.location?.name || '아직 확인하지 않음';
-    const locationAddress = destination.location?.address || (destination.ambiguous ? '정확한 장소를 직접 선택해 주세요.' : '일괄검사에서 자동 검색');
+    const locationAddress = destination.location?.address || (destination.ambiguous ? '정확한 장소를 직접 선택해 주세요.' : '거리점검에서 자동 검색');
     const locationBadge = destination.locationSource === 'auto'
       ? '<span class="auto-badge">자동 확인</span>'
       : destination.locationSource === 'saved'
@@ -780,18 +782,18 @@ async function runInspection({ searchOnly = false, routeOnly = false, forceRoute
   if (stopped) {
     setProgress({
       visible: true,
-      title: '일괄검사를 중지했어요',
+      title: '거리점검을 중지했어요',
       current: searchDone + routeDone,
       total: Math.max(1, searchTargets.length + routeTargets.length),
       detail: `완료된 위치 ${searchDone}곳과 거리 ${routeDone}곳의 결과는 유지됩니다.`,
       subcounts: inspectionSubcounts(searchDone, searchTargets.length, routeDone, routeTargets.length),
       stopped: true,
     });
-    showToast('일괄검사를 중지했어요. 완료된 결과는 유지됩니다.');
+    showToast('거리점검을 중지했어요. 완료된 결과는 유지됩니다.');
   } else {
     setProgress({
       visible: true,
-      title: searchOnly ? '출장지 위치 확인을 마쳤어요' : '일괄검사가 완료됐어요',
+      title: searchOnly ? '출장지 위치 확인을 마쳤어요' : '거리점검이 완료됐어요',
       current: searchTargets.length + routeTargets.length,
       total: Math.max(1, searchTargets.length + routeTargets.length),
       detail: `거리 완료 ${summary.routeComplete}곳 · 위치 확인 필요 ${summary.unresolved}곳 · 실패 ${summary.failed}곳`,
@@ -1004,7 +1006,7 @@ function confirmPendingLocation() {
     state.workplace = location;
     saveWorkplace(location);
     invalidateRoutes();
-    showToast('근무지를 저장했어요. 이제 일괄검사를 시작할 수 있어요.');
+    showToast('근무지를 저장했어요. 이제 거리점검을 시작할 수 있어요.');
   } else {
     const destination = getDestination(state.modal.key);
     if (destination) {
@@ -1026,11 +1028,44 @@ function resetCurrent() {
   state.batchStarted = false;
   state.lastBatchSummary = null;
   state.stopRequested = false;
+  dom.file_input.value = '';
   dom.analysis_section.classList.add('hidden');
   showUploadError('');
   setProgress({ visible: false });
   setStep(1);
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openHelpModal(section = '') {
+  dom.help_modal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  const targetId = section === 'privacy' ? 'help-privacy' : (section === 'file' ? 'help-file' : '');
+  window.setTimeout(() => {
+    const target = targetId ? document.getElementById(targetId) : dom.help_modal.querySelector('.help-content');
+    target?.scrollIntoView({ block: 'start' });
+  }, 20);
+}
+
+function closeHelpModal() {
+  dom.help_modal.classList.add('hidden');
+  if (dom.location_modal.classList.contains('hidden')) document.body.style.overflow = '';
+}
+
+function clearStoredBrowserData() {
+  clearAllStorage();
+  state.workplace = null;
+  state.destinationMemory = {};
+  state.routeCache = {};
+  state.destinations.forEach((destination) => {
+    destination.location = null;
+    destination.locationSource = null;
+    destination.locationStatus = 'needs';
+    destination.searchStatus = 'pending';
+    destination.route = null;
+    destination.routeStatus = 'pending';
+    destination.searchError = '';
+  });
+  renderAll();
 }
 
 function copyTripResult(tripId) {
@@ -1068,9 +1103,19 @@ function bindEvents() {
     if (file) handleFile(file);
   });
 
+  dom.help_button.addEventListener('click', () => openHelpModal());
+  document.querySelectorAll('[data-open-help]').forEach((button) => {
+    button.addEventListener('click', () => openHelpModal(button.dataset.openHelp || ''));
+  });
+  dom.privacy_details.addEventListener('click', () => openHelpModal('privacy'));
   dom.reset_all.addEventListener('click', resetCurrent);
   [dom.set_workplace, dom.change_workplace].forEach((button) => button.addEventListener('click', () => openLocationModal('workplace')));
   dom.view_workplace.addEventListener('click', () => openLocationModal('workplace'));
+  [dom.clear_all_storage, dom.clear_all_storage_upload].forEach((button) => button.addEventListener('click', () => {
+    if (!window.confirm('이 브라우저에 저장된 근무지와 출장지 위치정보를 모두 삭제할까요?')) return;
+    clearStoredBrowserData();
+    showToast('저장된 정보를 삭제했어요.');
+  }));
   dom.clear_workplace_storage.addEventListener('click', () => {
     if (!state.workplace) return showToast('저장된 근무지가 없어요.');
     if (!window.confirm('저장된 근무지를 초기화할까요? 현재 거리 결과도 다시 계산해야 합니다.')) return;
@@ -1185,15 +1230,21 @@ function bindEvents() {
   dom.export_results.addEventListener('click', () => {
     if (!state.parsed) return;
     exportResults({ XLSX, trips: state.parsed.trips, destinations: state.destinations, workplace: state.workplace });
-    showToast('일괄검사 결과 엑셀을 만들었어요.');
+    showToast('거리점검 결과 엑셀을 만들었어요.');
   });
 
+  dom.close_help.addEventListener('click', closeHelpModal);
+  dom.help_modal.addEventListener('click', (event) => {
+    if (event.target === dom.help_modal) closeHelpModal();
+  });
   dom.close_modal.addEventListener('click', closeLocationModal);
   dom.location_modal.addEventListener('click', (event) => {
     if (event.target === dom.location_modal) closeLocationModal();
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !dom.location_modal.classList.contains('hidden')) closeLocationModal();
+    if (event.key !== 'Escape') return;
+    if (!dom.help_modal.classList.contains('hidden')) closeHelpModal();
+    else if (!dom.location_modal.classList.contains('hidden')) closeLocationModal();
   });
   dom.place_search_form.addEventListener('submit', (event) => {
     event.preventDefault();

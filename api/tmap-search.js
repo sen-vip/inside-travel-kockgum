@@ -81,9 +81,12 @@ function normalizeTmapError(error) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET') return json(res, 405, { ok: false, message: 'GET 요청만 지원합니다.' });
+  if (req.method !== 'POST') return json(res, 405, { ok: false, message: 'POST 요청만 지원합니다.' });
 
-  const query = safeText(req.query?.q, 100);
+  const body = typeof req.body === 'string'
+    ? (() => { try { return JSON.parse(req.body); } catch { return {}; } })()
+    : (req.body || {});
+  const query = safeText(body.query, 100);
   if (query.length < 2) return json(res, 400, { ok: false, message: '검색어를 두 글자 이상 입력해 주세요.' });
   if (!getAppKey()) return json(res, 503, { ok: false, code: 'TMAP_APP_KEY_NOT_CONFIGURED', message: 'TMAP_APP_KEY 환경변수가 설정되지 않았습니다.' });
 

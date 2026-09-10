@@ -1,9 +1,9 @@
 {
   "name": "inside-travel-kockgum",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "private": true,
   "type": "module",
-  "description": "에듀파인 관내여비 내역을 일괄검사해 왕복 2km 여부를 한눈에 보여주는 웹앱",
+  "description": "에듀파인 관내여비 자료를 브라우저에서 읽어 출장지별 보행 왕복거리와 2km 이내 여부를 확인하는 학교 행정실 업무 보조 도구",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -89,7 +89,7 @@ export function exportResults({ XLSX, trips, destinations, workplace }) {
   ));
   const workbook = XLSX.utils.book_new();
   const summaryRows = [
-    ['관내여비 콕검 v0.2.8 일괄검사 결과'],
+    ['관내여비 콕검 v0.2.9 거리점검 결과'],
     ['근무지', workplace?.name || ''],
     ['근무지 주소', workplace?.address || ''],
     ['생성일시', new Date().toLocaleString('ko-KR')],
@@ -104,13 +104,13 @@ export function exportResults({ XLSX, trips, destinations, workplace }) {
   const needsSheet = XLSX.utils.json_to_sheet(needsRows.length ? needsRows : [{ 안내: '확인이 필요한 출장 건이 없습니다.' }]);
   setWidths(needsSheet, needsRows, Object.keys(needsRows[0] || { 안내: '' }));
 
-  XLSX.utils.book_append_sheet(workbook, tripSheet, '출장별 검사결과');
+  XLSX.utils.book_append_sheet(workbook, tripSheet, '출장별 점검결과');
   XLSX.utils.book_append_sheet(workbook, destinationSheet, '출장지별 거리');
   XLSX.utils.book_append_sheet(workbook, needsSheet, '확인 필요');
 
   const now = new Date();
   const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-  XLSX.writeFile(workbook, `관내여비콕검_일괄검사결과_${stamp}.xlsx`, { compression: true });
+  XLSX.writeFile(workbook, `관내여비콕검_거리점검결과_${stamp}.xlsx`, { compression: true });
 }
 
 export { statusFor };

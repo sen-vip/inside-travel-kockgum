@@ -22,11 +22,20 @@ assert.equal(JSON.parse(res.body).configured, false);
 
 res = makeRes();
 await search({ method: 'GET', query: { q: '예시중학교' } }, res);
+assert.equal(res.code, 405);
+
+res = makeRes();
+await search({ method: 'POST', body: { query: '예시중학교' } }, res);
 assert.equal(res.code, 503);
 assert.equal(JSON.parse(res.body).code, 'TMAP_APP_KEY_NOT_CONFIGURED');
 
 res = makeRes();
-await route({ method: 'POST', body: { start: { lat: 37.5, lon: 127, name: '출발' }, end: { lat: 37.51, lon: 127.01, name: '도착' } } }, res);
+await search({ method: 'POST', body: JSON.stringify({ query: '예시중학교' }) }, res);
+assert.equal(res.code, 503);
+assert.equal(JSON.parse(res.body).code, 'TMAP_APP_KEY_NOT_CONFIGURED');
+
+res = makeRes();
+await route({ method: 'POST', body: { start: { lat: 37.5, lon: 127 }, end: { lat: 37.51, lon: 127.01 } } }, res);
 assert.equal(res.code, 503);
 assert.equal(JSON.parse(res.body).code, 'TMAP_APP_KEY_NOT_CONFIGURED');
 console.log('API fallback test passed.');

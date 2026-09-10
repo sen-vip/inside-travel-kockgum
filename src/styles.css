@@ -346,7 +346,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .pending-location .button { width: 100%; }
 }
 
-/* v0.2 일괄검사 */
+/* v0.2 거리점검 */
 .stepper { max-width: 900px; }
 .button.large { min-height: 50px; padding: 0 22px; border-radius: 14px; font-size: 15px; }
 .button.danger { color: #a33c3c; background: #fff0ef; }
@@ -537,4 +537,96 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .privacy-note span { font-size: 12.5px; }
   .footer-main { align-items: flex-start; flex-direction: column; gap: 7px; }
   .github-link { margin-left: -10px; }
+}
+
+/* v0.2.9 첫 사용 길찾기 · 개인정보 · 도움말 */
+.text-link-button {
+  padding: 4px 2px;
+  border: 0;
+  color: var(--blue);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.text-link-button:hover { color: var(--blue-dark); }
+.upload-heading { margin-bottom: 18px; }
+.edufine-path-primary {
+  padding: 18px;
+  border: 1px solid #ced8f4;
+  border-radius: 16px;
+  background: #f8faff;
+}
+.path-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.path-title-row strong { color: var(--slate-900, var(--slate-950)); font-size: 14px; }
+.path-steps { margin-top: 13px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.path-steps span { padding: 7px 9px; border-radius: 9px; color: var(--slate-700); background: #fff; font-size: 11.5px; font-weight: 750; }
+.path-steps span.current { color: var(--blue); background: var(--blue-soft); font-weight: 850; }
+.path-steps b { color: var(--slate-400, var(--slate-500)); font-size: 13px; }
+.export-step { margin-top: 12px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; color: var(--slate-600); font-size: 11.5px; }
+.export-step strong { padding: 6px 9px; border-radius: 8px; color: var(--blue); background: #fff; border: 1px solid #dbe2f7; font-size: 11.5px; }
+.export-step b { color: var(--slate-400, var(--slate-500)); }
+.secondary-guide { margin-top: 10px; }
+.file-path-content.single-path { grid-template-columns: 1fr; }
+.upload-ready { margin: 22px 0 12px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.upload-ready strong, .upload-ready span { display: block; }
+.upload-ready strong { color: var(--slate-950); font-size: 15px; }
+.upload-ready div > span { margin-top: 5px; color: var(--slate-600); font-size: 12.5px; line-height: 1.55; }
+.privacy-note { align-items: center; }
+.privacy-copy { flex: 1; }
+.privacy-link { flex: 0 0 auto; margin-left: auto; }
+.storage-actions { flex-wrap: wrap; }
+.storage-clear-all { color: var(--coral); font-weight: 800; }
+
+.help-modal-card { width: min(820px, 100%); }
+.help-header { position: sticky; top: 0; z-index: 2; border-bottom: 1px solid var(--slate-200); background: rgba(255,255,255,.97); backdrop-filter: blur(8px); }
+.help-content { padding: 6px 28px 30px; scroll-behavior: smooth; }
+.help-lead { margin: 8px 0 24px; color: var(--slate-700); font-size: 14px; line-height: 1.75; }
+.help-section { padding: 22px 0; border-top: 1px solid var(--slate-200); scroll-margin-top: 90px; }
+.help-section:first-of-type { border-top: 0; }
+.help-section h3 { margin: 0 0 12px; color: var(--slate-950); font-size: 17px; letter-spacing: -.02em; }
+.help-section p, .help-section li { color: var(--slate-700); font-size: 12.5px; line-height: 1.75; }
+.help-section p { margin: 8px 0; }
+.help-section ul { margin: 10px 0; padding-left: 20px; }
+.help-path-box { padding: 14px 15px; border: 1px solid #d8e0f5; border-radius: 13px; background: #f8faff; }
+.help-path-box strong, .help-path-box span { display: block; }
+.help-path-box strong { color: var(--blue); font-size: 11px; }
+.help-path-box span { margin-top: 6px; color: var(--slate-800); font-size: 12.5px; font-weight: 700; line-height: 1.65; }
+.help-details { margin-top: 9px; border: 1px solid var(--slate-200); border-radius: 12px; overflow: hidden; }
+.help-details summary, .faq-list summary { padding: 11px 13px; color: var(--slate-700); font-size: 12px; font-weight: 800; cursor: pointer; }
+.help-details p, .faq-list p { margin: 0; padding: 0 13px 13px; }
+.help-note { color: var(--slate-500) !important; font-size: 11.5px !important; }
+.help-steps { margin: 0; padding: 0; list-style: none; counter-reset: help-step; display: grid; gap: 8px; }
+.help-steps li { position: relative; padding: 12px 12px 12px 45px; border-radius: 12px; background: var(--slate-100); counter-increment: help-step; }
+.help-steps li::before { content: counter(help-step); position: absolute; left: 12px; top: 12px; width: 23px; height: 23px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--blue); font-size: 10px; font-weight: 900; }
+.help-steps strong, .help-steps span { display: block; }
+.help-steps strong { color: var(--slate-900, var(--slate-950)); font-size: 12.5px; }
+.help-steps span { margin-top: 2px; color: var(--slate-600); font-size: 11.5px; }
+.warning-help { margin-top: 4px; padding-left: 16px; padding-right: 16px; border: 1px solid #ead9b9; border-radius: 14px; background: #fffbf2; }
+.privacy-help { margin-top: 12px; padding-left: 16px; padding-right: 16px; border: 1px solid #cfe8db; border-radius: 14px; background: #f4fbf7; }
+.faq-list { display: grid; gap: 8px; }
+.faq-list details { border: 1px solid var(--slate-200); border-radius: 12px; background: #fff; }
+
+@media (max-width: 680px) {
+  .header-actions { gap: 2px; }
+  .header-actions .button.small { padding: 0 8px; }
+  .upload-heading { align-items: flex-start; }
+  .edufine-path-primary { padding: 15px; }
+  .path-steps { gap: 5px; }
+  .path-steps span { padding: 6px 7px; font-size: 10.5px; }
+  .upload-ready { align-items: flex-start; flex-direction: column; }
+  .privacy-note { align-items: flex-start; flex-wrap: wrap; }
+  .privacy-link { margin-left: 34px; }
+  .storage-actions { justify-content: flex-start; }
+  .help-content { padding: 4px 16px 24px; }
+  .help-section { padding: 18px 0; }
+  .warning-help, .privacy-help { padding-left: 13px; padding-right: 13px; }
+}
+.privacy-actions { flex: 0 0 auto; margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.privacy-link { margin-left: 0; }
+.privacy-clear-link { color: var(--slate-600); }
+@media (max-width: 680px) {
+  .privacy-actions { width: 100%; margin-left: 34px; justify-content: flex-start; }
+  .privacy-link { margin-left: 0; }
 }
