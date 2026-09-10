@@ -613,7 +613,9 @@ function renderResults() {
         </div>
       </td>
       <td data-label="왕복거리"><strong class="result-distance">${destination?.route ? formatDistance(destination.route.totalDistance) : '-'}</strong></td>
-      <td data-label="2km 판정"><span class="pill ${pillKind}">${escapeHtml(status.displayLabel)}</span></td>
+      <td data-label="2km 판정">${!destination?.location
+        ? `<button class="pill pill-action ${pillKind}" data-action="resolve-location" data-key="${escapeHtml(destination?.key || trip.normalizedDestination)}" type="button" title="장소 선택 열기">${escapeHtml(status.displayLabel)}</button>`
+        : `<span class="pill ${pillKind}">${escapeHtml(status.displayLabel)}</span>`}</td>
       <td data-label="확인사항">
         <div class="check-cell ${noteClass}">
           <span>${escapeHtml(status.note)}</span>
@@ -744,12 +746,37 @@ function saveDestinationLocation(destination, location, source = 'manual') {
   }
 }
 
+function topLevelRegion(address) {
+  const text = String(address || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const aliases = [
+    ['서울', /(?:^|\s)서울(?:특별시)?(?:\s|$)/],
+    ['부산', /(?:^|\s)부산(?:광역시)?(?:\s|$)/],
+    ['대구', /(?:^|\s)대구(?:광역시)?(?:\s|$)/],
+    ['인천', /(?:^|\s)인천(?:광역시)?(?:\s|$)/],
+    ['광주', /(?:^|\s)광주(?:광역시)?(?:\s|$)/],
+    ['대전', /(?:^|\s)대전(?:광역시)?(?:\s|$)/],
+    ['울산', /(?:^|\s)울산(?:광역시)?(?:\s|$)/],
+    ['세종', /(?:^|\s)세종(?:특별자치시)?(?:\s|$)/],
+    ['경기', /(?:^|\s)경기(?:도)?(?:\s|$)/],
+    ['강원', /(?:^|\s)강원(?:특별자치도|도)?(?:\s|$)/],
+    ['충북', /(?:^|\s)(?:충북|충청북도)(?:\s|$)/],
+    ['충남', /(?:^|\s)(?:충남|충청남도)(?:\s|$)/],
+    ['전북', /(?:^|\s)(?:전북|전북특별자치도|전라북도)(?:\s|$)/],
+    ['전남', /(?:^|\s)(?:전남|전라남도)(?:\s|$)/],
+    ['경북', /(?:^|\s)(?:경북|경상북도)(?:\s|$)/],
+    ['경남', /(?:^|\s)(?:경남|경상남도)(?:\s|$)/],
+    ['제주', /(?:^|\s)제주(?:특별자치도|도)?(?:\s|$)/],
+  ];
+  return aliases.find(([, pattern]) => pattern.test(text))?.[0] || '';
+}
+
 function sameRegion(candidate, workplace) {
   if (!workplace?.address || !candidate?.address) return true;
-  const workTokens = String(workplace.address).match(/[가-힣]+(?:특별시|광역시|특별자치시|도|시|구)/g) || [];
-  const candidateAddress = String(candidate.address || '');
-  if (!workTokens.length) return true;
-  return workTokens.slice(0, 1).some((token) => candidateAddress.includes(token));
+  const workRegion = topLevelRegion(workplace.address);
+  const candidateRegion = topLevelRegion(candidate.address);
+  if (!workRegion || !candidateRegion) return true;
+  return workRegion === candidateRegion;
 }
 
 function confidenceCandidate(destination, candidates) {
@@ -760,9 +787,19 @@ function confidenceCandidate(destination, candidates) {
     if (candidates.length === 1) return candidates[0];
     return null;
   }
+
   const target = canonical(destination.searchQuery || destination.originalName);
-  const exact = candidates.filter((candidate) => canonical(candidate.name) === target && sameRegion(candidate, state.workplace));
-  if (exact.length === 1) return exact[0];
+
+  // 띄어쓰기·기호를 제외한 장소명이 정확히 일치하는 결과가 하나뿐이면
+  // 주변의 주차장·지점 같은 유사 POI가 함께 검색되어도 본 장소를 자동 확정한다.
+  // 지역 표기(예: 서울특별시 ↔ 서울)가 달라 정확한 장소를 놓치는 문제도 피한다.
+  const exactByName = candidates.filter((candidate) => canonical(candidate.name) === target);
+  if (exactByName.length === 1) return exactByName[0];
+  if (exactByName.length > 1) {
+    const exactSameRegion = exactByName.filter((candidate) => sameRegion(candidate, state.workplace));
+    if (exactSameRegion.length === 1) return exactSameRegion[0];
+  }
+
   const strong = candidates.filter((candidate) => {
     const name = canonical(candidate.name);
     return name && target && (name.startsWith(target) || target.startsWith(name)) && Math.min(name.length, target.length) >= 4;
@@ -1432,8 +1469,16 @@ function bindEvents() {
     dom.result_section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
   dom.result_body.addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-action="copy-result"]');
-    if (button) copyTripResult(button.dataset.tripId);
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    if (button.dataset.action === 'copy-result') {
+      copyTripResult(button.dataset.tripId);
+      return;
+    }
+    if (button.dataset.action === 'resolve-location') {
+      const key = button.dataset.key;
+      if (getDestination(key)) openLocationModal('destination', key);
+    }
   });
   dom.export_results.addEventListener('click', () => {
     if (!state.parsed) return;

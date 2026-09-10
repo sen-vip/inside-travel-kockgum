@@ -657,3 +657,9 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .tmap-usage-head { align-items: flex-start; }
   .tmap-usage-head > div { align-items: flex-start; flex-direction: column; gap: 2px; }
 }
+
+
+/* v0.2.11 결과 위치확인 바로가기 */
+.pill-action { border: 0; font: inherit; cursor: pointer; }
+.pill-action:hover { filter: brightness(.97); box-shadow: 0 0 0 2px rgba(49,89,216,.10); }
+.pill-action:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
