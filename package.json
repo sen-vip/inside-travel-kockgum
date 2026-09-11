@@ -1,6 +1,6 @@
 {
   "name": "inside-travel-kockgum",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "private": true,
   "type": "module",
   "description": "에듀파인 관내여비 자료를 브라우저에서 읽어 출장지별 보행 왕복거리와 2km 이내 여부를 확인하는 학교 행정실 업무 보조 도구",
@@ -9,11 +9,12 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:parser": "node tests/parser.test.mjs",
-    "test": "npm run test:parser && npm run test:dom && npm run test:export && npm run test:api && npm run test:usage",
+    "test": "npm run test:parser && npm run test:dom && npm run test:location && npm run test:export && npm run test:api && npm run test:usage",
     "test:export": "node tests/exporter.test.mjs",
     "test:api": "node tests/api.test.mjs",
     "test:dom": "node tests/dom.test.mjs",
-    "test:usage": "node tests/usage.test.mjs"
+    "test:usage": "node tests/usage.test.mjs",
+    "test:location": "node tests/location-match.test.mjs"
   },
   "dependencies": {
     "leaflet": "^1.9.4",
