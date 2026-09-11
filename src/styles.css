@@ -663,3 +663,51 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .pill-action { border: 0; font: inherit; cursor: pointer; }
 .pill-action:hover { filter: brightness(.97); box-shadow: 0 0 0 2px rgba(49,89,216,.10); }
 .pill-action:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+
+/* v0.2.14 맨 위로 */
+.back-to-top {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 750;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 14px 0 11px;
+  border: 1px solid var(--slate-200);
+  border-radius: 999px;
+  color: var(--slate-700);
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 10px 28px rgba(32,43,69,.14);
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease, visibility .18s ease, border-color .18s ease, color .18s ease;
+  backdrop-filter: blur(8px);
+}
+.back-to-top.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.back-to-top:hover { color: var(--blue); border-color: #cfd8f3; }
+.back-to-top:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.back-to-top svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (max-width: 680px) {
+  .back-to-top { right: 14px; bottom: 16px; min-height: 40px; padding: 0 12px 0 9px; }
+}
+
+
+/* v0.2.15 장소 선택 유도 */
+.result-metric.action { background: var(--blue-soft); }
+.result-metric.action strong { color: var(--blue); }
+.result-callout.selection { border-color: #cfdafa; background: #f7f9ff; }
+.result-callout.selection strong { color: var(--blue); }
+.selection-row { background: #fbfcff; }

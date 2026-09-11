@@ -14,5 +14,7 @@ assert.deepEqual([...new Set(duplicates)], [], `중복 DOM ID: ${duplicates.join
 
 assert.match(main, /async function confirmPendingLocation\(\)/, '위치 확정 후 비동기 거리 재계산 흐름이 필요합니다.');
 assert.match(main, /await calculateDestination\(destination\)/, '수동 위치 확정 후 왕복거리 자동 계산 호출이 필요합니다.');
+assert.match(html, /id="back-to-top"/, '맨 위로 버튼이 필요합니다.');
+assert.match(main, /window\.scrollTo\(\{ top: 0, behavior: 'smooth' \}\)/, '맨 위로 버튼은 부드러운 최상단 이동을 사용해야 합니다.');
 
 console.log(`DOM test passed: ${required.length} required IDs`);

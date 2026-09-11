@@ -33,10 +33,11 @@ const dom = Object.fromEntries([
   'filter-needs-count', 'filter-resolved-count', 'filter-within-count', 'filter-boundary-count',
   'filter-failed-count', 'result-section', 'export-results', 'result-metrics', 'show-needs-only',
   'result-filters', 'result-search', 'result-body', 'result-empty',
+  'result-callout', 'result-callout-title', 'result-callout-detail',
   'location-modal', 'modal-kicker', 'modal-title', 'close-modal', 'place-search-form',
   'place-search-input', 'candidate-loading', 'candidate-list', 'candidate-empty',
   'pending-location', 'pending-name', 'pending-address', 'confirm-location',
-  'help-modal', 'close-help', 'privacy-details', 'clear-all-storage-upload', 'toast',
+  'help-modal', 'close-help', 'privacy-details', 'clear-all-storage-upload', 'back-to-top', 'toast',
 ].map((id) => [id.replaceAll('-', '_'), document.getElementById(id)]));
 
 const state = {
@@ -57,6 +58,8 @@ const state = {
   tmapUsage: { loading: true, configured: null, used: 0, officialLimit: 1000, safeLimit: 900, warningAt: 800, remainingSafe: 900, blocked: false, error: '' },
   batchStarted: false,
   lastBatchSummary: null,
+  needsQueueActive: false,
+  needsQueueTotal: 0,
   modal: {
     mode: null,
     key: null,
@@ -273,7 +276,7 @@ function destinationStatus(destination) {
   if (!destination.location) {
     if (destination.searchStatus === 'searching') return { label: '위치 검색 중', kind: 'blue', group: 'resolved' };
     if (destination.searchStatus === 'error') return { label: '검색 실패', kind: 'coral', group: 'failed' };
-    return { label: '위치 확인 필요', kind: 'coral', group: 'needs' };
+    return { label: '장소 선택', kind: 'blue', group: 'needs' };
   }
   if (destination.routeStatus === 'calculating') return { label: '거리 계산 중', kind: 'blue', group: 'resolved' };
   if (destination.routeStatus === 'error') return { label: '거리 계산 실패', kind: 'coral', group: 'failed' };
@@ -570,6 +573,7 @@ function allResultRows() {
 function matchesResultFilter(entry) {
   const filter = state.resultFilter;
   if (filter === 'needs' && !(entry.status.needs || entry.status.within || entry.status.boundary || entry.status.failed)) return false;
+  if (filter === 'location' && entry.destination?.location) return false;
   if (filter === 'within' && !entry.status.within) return false;
   if (filter === 'over' && !entry.status.over) return false;
   if (filter === 'boundary' && !entry.status.boundary) return false;
@@ -583,15 +587,15 @@ function renderResultMetrics(rows) {
   const total = rows.length;
   const within = rows.filter((row) => row.status.within).length;
   const over = rows.filter((row) => row.status.over).length;
-  const needs = rows.filter((row) => row.status.needs || row.status.failed).length;
+  const locationNeeds = rows.filter((row) => !row.destination?.location).length;
   const metrics = [
-    ['총 출장', total, ''],
-    ['왕복 2km 이내', within, 'emphasis'],
-    ['왕복 2km 초과', over, ''],
-    ['위치·거리 확인', needs, 'alert'],
+    ['총 출장', total, '', 'all'],
+    ['왕복 2km 이내', within, 'emphasis', 'within'],
+    ['왕복 2km 초과', over, '', 'over'],
+    ['장소 선택', locationNeeds, 'action', 'location'],
   ];
-  dom.result_metrics.innerHTML = metrics.map(([label, value, className]) => `
-    <button class="result-metric ${className}" data-metric-filter="${label === '총 출장' ? 'all' : label === '왕복 2km 이내' ? 'within' : label === '왕복 2km 초과' ? 'over' : 'needs'}" type="button">
+  dom.result_metrics.innerHTML = metrics.map(([label, value, className, filter]) => `
+    <button class="result-metric ${className}" data-metric-filter="${filter}" type="button">
       <span>${label}</span><strong>${value}건</strong>
     </button>`).join('');
 }
@@ -599,12 +603,29 @@ function renderResultMetrics(rows) {
 function renderResults() {
   const allRows = allResultRows();
   renderResultMetrics(allRows);
+
+  const unresolved = state.destinations.filter((destination) => !destination.location);
+  const unresolvedTripCount = unresolved.reduce((sum, destination) => sum + destination.count, 0);
+  if (unresolved.length > 0) {
+    dom.result_callout.classList.add('selection');
+    dom.result_callout_title.textContent = `장소 선택이 필요한 출장지 ${unresolved.length}곳이 있어요.`;
+    dom.result_callout_detail.textContent = `검색 후보 중 실제 출장지를 선택해 주세요. 선택하면 연결된 ${unresolvedTripCount}건에 함께 적용되고 거리를 자동으로 계산해요.`;
+    dom.show_needs_only.textContent = '장소 선택하기';
+    dom.show_needs_only.dataset.mode = 'select-locations';
+  } else {
+    dom.result_callout.classList.remove('selection');
+    dom.result_callout_title.textContent = '왕복 2km 이내와 추가 확인이 필요한 출장부터 보세요.';
+    dom.result_callout_detail.textContent = '2km 이내인 경우에는 실제 이동수단과 교통비 발생 여부를 별도로 확인해 주세요.';
+    dom.show_needs_only.textContent = '확인 대상만 보기';
+    dom.show_needs_only.dataset.mode = 'needs';
+  }
+
   const rows = allRows.filter(matchesResultFilter);
   dom.result_empty.classList.toggle('hidden', rows.length > 0);
   dom.result_body.innerHTML = rows.map(({ trip, destination, status }) => {
-    const pillKind = status.boundary ? 'purple' : (status.within ? 'amber' : (status.over ? 'neutral' : 'coral'));
+    const pillKind = !destination?.location && !status.failed ? 'blue' : (status.boundary ? 'purple' : (status.within ? 'amber' : (status.over ? 'neutral' : 'coral')));
     const noteClass = status.note === '—' ? 'quiet' : '';
-    return `<tr class="${status.needs || status.failed ? 'needs-row' : status.within ? 'within-row' : ''}">
+    return `<tr class="${status.failed ? 'needs-row' : !destination?.location ? 'selection-row' : status.within ? 'within-row' : ''}">
       <td data-label="출장일">${escapeHtml(formatDateOnly(trip.startDate))}</td>
       <td data-label="출장자"><strong>${escapeHtml(trip.traveler)}</strong></td>
       <td data-label="출장지·목적">
@@ -981,7 +1002,7 @@ async function runInspection({ searchOnly = false, routeOnly = false, forceRoute
       title: searchOnly ? '출장지 위치 확인을 마쳤어요' : '거리점검이 완료됐어요',
       current: searchTargets.length + routeTargets.length,
       total: Math.max(1, searchTargets.length + routeTargets.length),
-      detail: `거리 완료 ${summary.routeComplete}곳 · 위치 확인 필요 ${summary.unresolved}곳 · 실패 ${summary.failed}곳`,
+      detail: `거리 완료 ${summary.routeComplete}곳 · 장소 선택 ${summary.unresolved}곳 · 실패 ${summary.failed}곳`,
       subcounts: inspectionSubcounts(searchDone, searchTargets.length, routeDone, routeTargets.length),
     });
     showToast(searchOnly
@@ -1077,6 +1098,42 @@ function drawCurrentRoute(destination) {
   state.modal.map.fitBounds(bounds.pad(.16));
 }
 
+function unresolvedLocationDestinations() {
+  return state.destinations.filter((destination) => !destination.location);
+}
+
+function startNeedsQueue() {
+  if (state.busy) {
+    showToast('현재 거리점검이 끝난 뒤 장소를 선택해 주세요.');
+    return;
+  }
+  const targets = unresolvedLocationDestinations();
+  if (!targets.length) {
+    showToast('장소 선택이 필요한 출장지가 없어요.');
+    return;
+  }
+  state.needsQueueActive = true;
+  state.needsQueueTotal = targets.length;
+  openLocationModal('destination', targets[0].key);
+}
+
+function continueNeedsQueue() {
+  if (!state.needsQueueActive) return;
+  const targets = unresolvedLocationDestinations();
+  if (!targets.length) {
+    state.needsQueueActive = false;
+    state.needsQueueTotal = 0;
+    if (state.resultFilter === 'location') {
+      state.resultFilter = 'all';
+      dom.result_filters.querySelectorAll('button').forEach((button) => button.classList.toggle('active', button.dataset.filter === 'all'));
+    }
+    renderResults();
+    showToast('장소 선택이 필요한 출장지를 모두 확인했어요.');
+    return;
+  }
+  window.setTimeout(() => openLocationModal('destination', targets[0].key), 120);
+}
+
 async function openLocationModal(mode, key = null) {
   state.modal.mode = mode;
   state.modal.key = key;
@@ -1097,15 +1154,23 @@ async function openLocationModal(mode, key = null) {
   } else {
     const destination = getDestination(key);
     if (!destination) return;
-    dom.modal_kicker.textContent = `${destination.count}건의 출장에 함께 적용`;
+    if (state.needsQueueActive) {
+      const remaining = unresolvedLocationDestinations().length;
+      const current = Math.max(1, state.needsQueueTotal - remaining + 1);
+      dom.modal_kicker.textContent = `장소 선택 ${current}/${state.needsQueueTotal} · ${destination.count}건의 출장에 함께 적용`;
+    } else {
+      dom.modal_kicker.textContent = `${destination.count}건의 출장에 함께 적용`;
+    }
     dom.modal_title.textContent = destination.originalName;
     query = destination.searchQuery;
     current = destination.location;
     const help = document.querySelector('.modal-help');
     if (help) {
-      help.textContent = destination.searchQueryIndoorAdjusted
-        ? `원본 출장지: ${destination.originalName} · 검색할 때 층·실 정보를 제외했어요.`
-        : '검색 결과를 선택하거나 지도에서 실제 출입구를 눌러 위치를 조정할 수 있어요.';
+      help.textContent = state.needsQueueActive
+        ? '실제 출장지를 선택하면 거리를 자동 계산한 뒤 다음 장소로 이어집니다.'
+        : destination.searchQueryIndoorAdjusted
+          ? `원본 출장지: ${destination.originalName} · 검색할 때 층·실 정보를 제외했어요.`
+          : '검색 결과를 선택하거나 지도에서 실제 출입구를 눌러 위치를 조정할 수 있어요.';
     }
   }
 
@@ -1128,11 +1193,15 @@ async function openLocationModal(mode, key = null) {
   if (query) await performPlaceSearch(query);
 }
 
-function closeLocationModal() {
+function closeLocationModal({ preserveQueue = false } = {}) {
   dom.location_modal.classList.add('hidden');
   document.body.style.overflow = '';
   state.modal.mode = null;
   state.modal.key = null;
+  if (!preserveQueue) {
+    state.needsQueueActive = false;
+    state.needsQueueTotal = 0;
+  }
 }
 
 function renderCandidates() {
@@ -1202,7 +1271,7 @@ async function confirmPendingLocation() {
   if (!destination) return;
 
   saveDestinationLocation(destination, location, 'manual');
-  closeLocationModal();
+  closeLocationModal({ preserveQueue: true });
   renderAll();
 
   // 위치를 수동 확정한 뒤에는 사용자가 별도로 '거리 계산'을 다시 누르지 않아도
@@ -1210,17 +1279,20 @@ async function confirmPendingLocation() {
   // saveDestinationLocation()에서 이미 적용되므로 TMAP 호출은 발생하지 않는다.
   if (destination.routeStatus === 'complete' && destination.route) {
     showToast(`${destination.originalName} 위치를 확정하고 저장된 왕복거리를 적용했어요. ${destination.count}건에 함께 적용됩니다.`);
+    continueNeedsQueue();
     return;
   }
 
   if (!state.workplace) {
     showToast(`${destination.originalName} 위치를 확정했어요. 근무지를 설정하면 왕복거리를 계산할 수 있어요.`);
+    continueNeedsQueue();
     return;
   }
 
   if (!(await ensureUsageCapacity(2))) {
     // 위치 자체는 확정해 둔다. 사용량 보호 때문에 자동 계산만 보류한다.
     renderAll();
+    continueNeedsQueue();
     return;
   }
 
@@ -1236,6 +1308,7 @@ async function confirmPendingLocation() {
       : `${destination.originalName} 위치는 확정했지만 거리 계산에 실패했어요. 다시 계산해 주세요.`,
     ok ? 'success' : 'error',
   );
+  continueNeedsQueue();
 }
 
 function resetCurrent() {
@@ -1288,6 +1361,10 @@ function clearStoredBrowserData() {
   renderAll();
 }
 
+function updateBackToTopVisibility() {
+  dom.back_to_top.classList.toggle('visible', window.scrollY > 480);
+}
+
 function copyTripResult(tripId) {
   const entry = allResultRows().find((row) => row.trip.id === tripId);
   if (!entry) return;
@@ -1302,6 +1379,11 @@ function copyTripResult(tripId) {
 }
 
 function bindEvents() {
+  dom.back_to_top.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  window.addEventListener('scroll', updateBackToTopVisibility, { passive: true });
+
   dom.drop_zone.addEventListener('click', () => dom.file_input.click());
   dom.drop_zone.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') dom.file_input.click();
@@ -1433,6 +1515,10 @@ function bindEvents() {
     renderResults();
   });
   dom.show_needs_only.addEventListener('click', () => {
+    if (dom.show_needs_only.dataset.mode === 'select-locations') {
+      startNeedsQueue();
+      return;
+    }
     state.resultFilter = 'needs';
     dom.result_filters.querySelectorAll('button').forEach((button) => button.classList.toggle('active', button.dataset.filter === 'needs'));
     renderResults();
@@ -1485,6 +1571,7 @@ function bindEvents() {
 }
 
 bindEvents();
+updateBackToTopVisibility();
 renderWorkplace();
 setStep(1);
 checkApi();
