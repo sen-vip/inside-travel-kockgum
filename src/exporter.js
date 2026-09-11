@@ -1,9 +1,9 @@
 function statusFor(destination) {
   if (!destination?.location) {
-    if (destination?.searchStatus === 'error') return { label: '검색 실패', note: destination.searchError || '출장지 주소 확인' };
+    if (destination?.searchStatus === 'error') return { label: '장소 확인', note: destination.searchError || '출장지 위치를 다시 확인해 주세요' };
     return { label: '장소 선택', note: '후보 중 실제 출장지를 선택해 주세요' };
   }
-  if (destination.routeStatus === 'error') return { label: '거리 계산 실패', note: destination.searchError || '출발·도착 위치 확인' };
+  if (destination.routeStatus === 'error') return { label: '거리 다시 확인', note: destination.searchError || '출발지와 출장지 위치 또는 경로를 다시 확인해 주세요' };
   if (!destination.route || !Number.isFinite(destination.route.totalDistance)) return { label: '거리 계산 전', note: '보행 왕복거리 계산 필요' };
 
   const distance = destination.route.totalDistance;
@@ -89,7 +89,7 @@ export function exportResults({ XLSX, trips, destinations, workplace }) {
   ));
   const workbook = XLSX.utils.book_new();
   const summaryRows = [
-    ['관내여비 콕검 v0.2.15 거리점검 결과'],
+    ['관내여비 콕검 v0.2.16 거리점검 결과'],
     ['근무지', workplace?.name || ''],
     ['근무지 주소', workplace?.address || ''],
     ['생성일시', new Date().toLocaleString('ko-KR')],

@@ -241,7 +241,7 @@ function compactRoute(route) {
 
 function showToast(message, type = 'success') {
   dom.toast.textContent = message;
-  dom.toast.style.background = type === 'error' ? '#b94a48' : '#1f7a54';
+  dom.toast.style.background = type === 'error' ? '#b94a48' : type === 'warning' ? '#80621a' : '#1f7a54';
   dom.toast.classList.remove('hidden');
   window.clearTimeout(showToast.timer);
   showToast.timer = window.setTimeout(() => dom.toast.classList.add('hidden'), 3000);
@@ -275,11 +275,11 @@ function setProgress({ visible, title = '', current = 0, total = 0, detail = '',
 function destinationStatus(destination) {
   if (!destination.location) {
     if (destination.searchStatus === 'searching') return { label: '위치 검색 중', kind: 'blue', group: 'resolved' };
-    if (destination.searchStatus === 'error') return { label: '검색 실패', kind: 'coral', group: 'failed' };
+    if (destination.searchStatus === 'error') return { label: '장소 확인', kind: 'blue', group: 'failed' };
     return { label: '장소 선택', kind: 'blue', group: 'needs' };
   }
   if (destination.routeStatus === 'calculating') return { label: '거리 계산 중', kind: 'blue', group: 'resolved' };
-  if (destination.routeStatus === 'error') return { label: '거리 계산 실패', kind: 'coral', group: 'failed' };
+  if (destination.routeStatus === 'error') return { label: '거리 다시 확인', kind: 'blue', group: 'failed' };
   if (!destination.route) return { label: '위치 확인 완료', kind: 'green', group: 'resolved' };
 
   const total = destination.route.totalDistance;
@@ -321,6 +321,27 @@ function resultStatus(destination) {
     needs,
     note,
   };
+}
+
+
+function resultRecovery(destination) {
+  if (!destination) return null;
+  if (!destination.location) {
+    return { action: 'resolve-location', label: '장소 선택', title: '실제 출장지 선택하기' };
+  }
+  if (destination.routeStatus !== 'error') return null;
+
+  const message = String(destination.searchError || '');
+  if (/안전한도|사용량 보호/.test(message)) {
+    return { action: null, label: '오늘 조회 대기', title: message || '오늘 거리조회 한도를 확인해 주세요.' };
+  }
+  if (/앱 키|상품 사용|지도 API|TMAP/.test(message)) {
+    return { action: null, label: '지도 연결 확인', title: message || '지도 API 연결 상태를 확인해 주세요.' };
+  }
+  if (/좌표|출발지|도착지|위치/.test(message)) {
+    return { action: 'resolve-route-location', label: '위치 다시 확인', title: '출장지 위치를 다시 확인한 뒤 자동으로 거리를 계산해요.' };
+  }
+  return { action: 'retry-route', label: '다시 계산', title: '왕복거리를 다시 계산해요.' };
 }
 
 function initializeDestinations(parsed) {
@@ -530,7 +551,7 @@ function renderDestinations() {
     if (destination.location) actions.push(`<button class="row-button" data-action="view-map" data-key="${escapeHtml(destination.key)}" type="button">지도 보기</button>`);
 
     return `
-      <tr class="${status.group === 'failed' ? 'failed-row' : ''}">
+      <tr>
         <td>
           <div class="cell-title">
             <button data-action="toggle-details" data-key="${escapeHtml(destination.key)}" type="button" aria-label="출장 상세 ${expanded ? '접기' : '펼치기'}">${expanded ? '−' : '+'}</button>
@@ -623,9 +644,15 @@ function renderResults() {
   const rows = allRows.filter(matchesResultFilter);
   dom.result_empty.classList.toggle('hidden', rows.length > 0);
   dom.result_body.innerHTML = rows.map(({ trip, destination, status }) => {
-    const pillKind = !destination?.location && !status.failed ? 'blue' : (status.boundary ? 'purple' : (status.within ? 'amber' : (status.over ? 'neutral' : 'coral')));
+    const recovery = resultRecovery(destination);
+    const pillKind = recovery ? 'blue' : (status.boundary ? 'purple' : (status.within ? 'amber' : (status.over ? 'neutral' : 'blue')));
     const noteClass = status.note === '—' ? 'quiet' : '';
-    return `<tr class="${status.failed ? 'needs-row' : !destination?.location ? 'selection-row' : status.within ? 'within-row' : ''}">
+    const statusControl = recovery?.action
+      ? `<button class="pill pill-action ${pillKind}" data-action="${recovery.action}" data-key="${escapeHtml(destination?.key || trip.normalizedDestination)}" type="button" title="${escapeHtml(recovery.title)}">${escapeHtml(recovery.label)}</button>`
+      : recovery
+        ? `<span class="pill ${pillKind}" title="${escapeHtml(recovery.title)}">${escapeHtml(recovery.label)}</span>`
+        : `<span class="pill ${pillKind}">${escapeHtml(status.displayLabel)}</span>`;
+    return `<tr class="${!destination?.location ? 'selection-row' : status.within ? 'within-row' : ''}">
       <td data-label="출장일">${escapeHtml(formatDateOnly(trip.startDate))}</td>
       <td data-label="출장자"><strong>${escapeHtml(trip.traveler)}</strong></td>
       <td data-label="출장지·목적">
@@ -635,9 +662,7 @@ function renderResults() {
         </div>
       </td>
       <td data-label="왕복거리"><strong class="result-distance">${destination?.route ? formatDistance(destination.route.totalDistance) : '-'}</strong></td>
-      <td data-label="2km 판정">${!destination?.location
-        ? `<button class="pill pill-action ${pillKind}" data-action="resolve-location" data-key="${escapeHtml(destination?.key || trip.normalizedDestination)}" type="button" title="장소 선택 열기">${escapeHtml(status.displayLabel)}</button>`
-        : `<span class="pill ${pillKind}">${escapeHtml(status.displayLabel)}</span>`}</td>
+      <td data-label="2km 판정">${statusControl}</td>
       <td data-label="확인사항">
         <div class="check-cell ${noteClass}">
           <span>${escapeHtml(status.note)}</span>
@@ -1002,7 +1027,7 @@ async function runInspection({ searchOnly = false, routeOnly = false, forceRoute
       title: searchOnly ? '출장지 위치 확인을 마쳤어요' : '거리점검이 완료됐어요',
       current: searchTargets.length + routeTargets.length,
       total: Math.max(1, searchTargets.length + routeTargets.length),
-      detail: `거리 완료 ${summary.routeComplete}곳 · 장소 선택 ${summary.unresolved}곳 · 실패 ${summary.failed}곳`,
+      detail: `거리 완료 ${summary.routeComplete}곳 · 장소 선택 ${summary.unresolved}곳 · 추가 확인 ${summary.failed}곳`,
       subcounts: inspectionSubcounts(searchDone, searchTargets.length, routeDone, routeTargets.length),
     });
     showToast(searchOnly
@@ -1305,8 +1330,8 @@ async function confirmPendingLocation() {
   showToast(
     ok
       ? `${destination.originalName} 위치를 확정하고 왕복거리도 계산했어요. ${destination.count}건에 함께 적용됩니다.`
-      : `${destination.originalName} 위치는 확정했지만 거리 계산에 실패했어요. 다시 계산해 주세요.`,
-    ok ? 'success' : 'error',
+      : `${destination.originalName} 위치는 저장했어요. 거리 확인이 더 필요해요.`,
+    ok ? 'success' : 'warning',
   );
   continueNeedsQueue();
 }
@@ -1492,7 +1517,7 @@ function bindEvents() {
       const ok = await calculateDestination(destination, { force: destination.routeStatus === 'error' });
       state.busy = false;
       renderAll();
-      showToast(ok ? '왕복거리를 계산했어요.' : '거리 계산에 실패했어요.', ok ? 'success' : 'error');
+      showToast(ok ? '왕복거리를 계산했어요.' : '거리 확인이 더 필요해요.', ok ? 'success' : 'warning');
     }
   });
 
@@ -1524,16 +1549,28 @@ function bindEvents() {
     renderResults();
     dom.result_section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
-  dom.result_body.addEventListener('click', (event) => {
+  dom.result_body.addEventListener('click', async (event) => {
     const button = event.target.closest('button[data-action]');
     if (!button) return;
     if (button.dataset.action === 'copy-result') {
       copyTripResult(button.dataset.tripId);
       return;
     }
-    if (button.dataset.action === 'resolve-location') {
+    if (button.dataset.action === 'resolve-location' || button.dataset.action === 'resolve-route-location') {
       const key = button.dataset.key;
       if (getDestination(key)) openLocationModal('destination', key);
+      return;
+    }
+    if (button.dataset.action === 'retry-route') {
+      const destination = getDestination(button.dataset.key);
+      if (!destination || !validateInspectionPrerequisites()) return;
+      if (!(await ensureUsageCapacity(2))) return;
+      state.busy = true;
+      renderAll();
+      const ok = await calculateDestination(destination, { force: true });
+      state.busy = false;
+      renderAll();
+      showToast(ok ? '왕복거리를 다시 계산했어요.' : '거리 확인이 더 필요해요.', ok ? 'success' : 'warning');
     }
   });
   dom.export_results.addEventListener('click', () => {
