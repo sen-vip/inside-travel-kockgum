@@ -17,4 +17,13 @@ assert.match(main, /await calculateDestination\(destination\)/, '수동 위치 �
 assert.match(html, /id="back-to-top"/, '맨 위로 버튼이 필요합니다.');
 assert.match(main, /window\.scrollTo\(\{ top: 0, behavior: 'smooth' \}\)/, '맨 위로 버튼은 부드러운 최상단 이동을 사용해야 합니다.');
 
+
+const overviewIndex = html.indexOf('id="result-overview"');
+const destinationIndex = html.indexOf('id="destination-section"');
+const detailIndex = html.indexOf('id="result-section"');
+assert.ok(overviewIndex !== -1 && destinationIndex !== -1 && detailIndex !== -1, '결과 요약/출장지별 거리/출장별 결과 영역이 필요합니다.');
+assert.ok(overviewIndex < destinationIndex && destinationIndex < detailIndex, '결과 흐름은 요약 → 출장지별 거리 → 출장별 결과 순서여야 합니다.');
+assert.match(main, /completionPulsePending = true/, '거리점검 완료 시 결과 요약 1회 강조 트리거가 필요합니다.');
+assert.match(main, /destination_title\.textContent = '출장지별 거리를 확인하세요'/, '점검 완료 뒤 출장지별 거리를 대표 결과로 안내해야 합니다.');
+
 console.log(`DOM test passed: ${required.length} required IDs`);

@@ -711,3 +711,73 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .result-callout.selection { border-color: #cfdafa; background: #f7f9ff; }
 .result-callout.selection strong { color: var(--blue); }
 .selection-row { background: #fbfcff; }
+
+
+/* v0.2.17 결과 흐름: 요약 → 출장지별 거리 → 출장별 결과 */
+.result-overview { position: relative; margin-bottom: 22px; }
+.result-overview .result-callout { margin-bottom: 0; }
+.destination-title-row { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.destination-title-row .section-kicker { margin: 0; }
+.destination-result-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  color: var(--green);
+  background: var(--green-soft);
+  font-size: 10.5px;
+  font-weight: 850;
+}
+.destination-result-summary { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 13px; }
+.destination-result-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 29px;
+  padding: 0 9px;
+  border-radius: 999px;
+  color: var(--slate-600);
+  background: var(--slate-100);
+  font-size: 11px;
+  font-weight: 750;
+}
+.destination-result-summary strong { color: var(--slate-900, var(--slate-950)); font-size: 12px; }
+.destination-result-summary .needs { color: var(--blue); background: var(--blue-soft); }
+.destination-result-summary .needs strong { color: var(--blue); }
+.destination-surface.result-ready { border-color: #d8e0f5; box-shadow: 0 16px 44px rgba(49,89,216,.08); }
+.destination-surface.result-ready .destination-heading { margin-bottom: 18px; }
+
+.result-overview.completion-pulse .result-metrics.compact-summary {
+  animation: result-summary-glow 1.45s ease-out 1;
+}
+.result-overview.completion-pulse .result-metrics.compact-summary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 25%, rgba(255,255,255,.82) 46%, rgba(225,232,255,.72) 52%, transparent 73%);
+  transform: translateX(-120%);
+  animation: result-summary-shine 1.15s ease-out 1;
+}
+.result-metrics.compact-summary { position: relative; }
+.result-overview.completion-pulse .result-metric strong { animation: result-number-pop .52s ease-out 1; }
+@keyframes result-summary-glow {
+  0% { box-shadow: 0 0 0 0 rgba(49,89,216,0); }
+  38% { box-shadow: 0 0 0 4px rgba(49,89,216,.09), 0 12px 34px rgba(49,89,216,.13); }
+  100% { box-shadow: 0 0 0 0 rgba(49,89,216,0); }
+}
+@keyframes result-summary-shine { to { transform: translateX(120%); } }
+@keyframes result-number-pop { 0%,100% { transform: scale(1); } 45% { transform: scale(1.045); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .result-overview.completion-pulse .result-metrics.compact-summary,
+  .result-overview.completion-pulse .result-metrics.compact-summary::after,
+  .result-overview.completion-pulse .result-metric strong { animation: none; }
+}
+
+@media (max-width: 680px) {
+  .destination-title-row { align-items: flex-start; flex-wrap: wrap; }
+  .destination-result-summary { gap: 6px; }
+  .destination-result-summary span { min-height: 27px; padding: 0 8px; font-size: 10.5px; }
+}
