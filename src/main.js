@@ -31,8 +31,7 @@ const dom = Object.fromEntries([
   'progress-bar', 'progress-detail', 'progress-subcounts', 'destination-filters',
   'destination-search', 'destination-body', 'destination-empty', 'filter-all-count',
   'filter-needs-count', 'filter-resolved-count', 'filter-within-count', 'filter-boundary-count',
-  'filter-failed-count', 'result-overview', 'destination-section', 'destination-result-badge', 'destination-title', 'destination-description', 'destination-result-summary',
-  'result-section', 'export-results', 'result-metrics', 'show-needs-only',
+  'filter-failed-count', 'result-section', 'export-results', 'result-metrics', 'show-needs-only',
   'result-filters', 'result-search', 'result-body', 'result-empty',
   'result-callout', 'result-callout-title', 'result-callout-detail',
   'location-modal', 'modal-kicker', 'modal-title', 'close-modal', 'place-search-form',
@@ -61,7 +60,6 @@ const state = {
   lastBatchSummary: null,
   needsQueueActive: false,
   needsQueueTotal: 0,
-  completionPulsePending: false,
   modal: {
     mode: null,
     key: null,
@@ -528,38 +526,7 @@ function matchesDestinationFilter(destination) {
   return true;
 }
 
-function renderDestinationResultHeading() {
-  const summary = summarizeDestinations();
-  const inspectionComplete = Boolean(state.lastBatchSummary && !state.lastBatchSummary.stopped && !state.busy);
-  dom.destination_result_badge.classList.toggle('hidden', !inspectionComplete);
-  dom.destination_section.classList.toggle('result-ready', inspectionComplete);
-
-  if (!inspectionComplete) {
-    dom.destination_title.textContent = '불명확한 장소만 확인하세요';
-    dom.destination_description.textContent = '같은 출장지는 한 번만 확인합니다. 위치를 바꾸면 연결된 모든 출장 건의 거리가 함께 갱신돼요.';
-    dom.destination_result_summary.classList.add('hidden');
-    dom.auto_search.textContent = '위치 자동 찾기';
-    dom.calculate_all.textContent = '거리 계산하기';
-    return;
-  }
-
-  dom.destination_title.textContent = '출장지별 거리를 확인하세요';
-  dom.destination_description.textContent = summary.unresolved
-    ? '같은 출장지는 한 번만 묶어 보여드려요. 장소 선택이 남은 항목만 확인하면 연결된 출장 건의 거리도 자동으로 갱신됩니다.'
-    : '같은 출장지는 한 번만 묶어 보여드려요. 아래에서 출장지별 왕복거리와 2km 여부를 먼저 확인하세요.';
-  dom.destination_result_summary.innerHTML = [
-    `<span>총 <strong>${summary.total}</strong>곳</span>`,
-    `<span>2km 이내 <strong>${summary.within}</strong>곳</span>`,
-    `<span>2km 초과 <strong>${summary.over}</strong>곳</span>`,
-    summary.unresolved ? `<span class="needs">장소 선택 <strong>${summary.unresolved}</strong>곳</span>` : '',
-  ].filter(Boolean).join('');
-  dom.destination_result_summary.classList.remove('hidden');
-  dom.auto_search.textContent = summary.unresolved ? '남은 위치 찾기' : '위치 다시 확인';
-  dom.calculate_all.textContent = summary.routeComplete ? '거리 다시 계산' : '거리 계산하기';
-}
-
 function renderDestinations() {
-  renderDestinationResultHeading();
   renderDestinationCounts();
   const rows = state.destinations.filter(matchesDestinationFilter);
   dom.destination_empty.classList.toggle('hidden', rows.length > 0);
@@ -652,20 +619,10 @@ function renderResultMetrics(rows) {
     <button class="result-metric ${className}" data-metric-filter="${filter}" type="button">
       <span>${label}</span><strong>${value}건</strong>
     </button>`).join('');
-
-  if (state.completionPulsePending) {
-    state.completionPulsePending = false;
-    dom.result_overview.classList.remove('completion-pulse');
-    void dom.result_overview.offsetWidth;
-    dom.result_overview.classList.add('completion-pulse');
-    window.setTimeout(() => dom.result_overview.classList.remove('completion-pulse'), 1600);
-  }
 }
 
 function renderResults() {
   const allRows = allResultRows();
-  const hasResultData = Boolean(state.lastBatchSummary || state.destinations.some((destination) => destination.routeStatus === 'complete'));
-  dom.result_overview.classList.toggle('hidden', !hasResultData);
   renderResultMetrics(allRows);
 
   const unresolved = state.destinations.filter((destination) => !destination.location);
@@ -678,8 +635,8 @@ function renderResults() {
     dom.show_needs_only.dataset.mode = 'select-locations';
   } else {
     dom.result_callout.classList.remove('selection');
-    dom.result_callout_title.textContent = '거리점검이 끝났어요. 출장지별 거리를 먼저 확인해 보세요.';
-    dom.result_callout_detail.textContent = '아래 출장지별 거리에서 전체 흐름을 확인한 뒤, 출장별 결과에서 날짜·출장자별 상세 내역을 볼 수 있어요.';
+    dom.result_callout_title.textContent = '왕복 2km 이내와 추가 확인이 필요한 출장부터 보세요.';
+    dom.result_callout_detail.textContent = '2km 이내인 경우에는 실제 이동수단과 교통비 발생 여부를 별도로 확인해 주세요.';
     dom.show_needs_only.textContent = '확인 대상만 보기';
     dom.show_needs_only.dataset.mode = 'needs';
   }
@@ -761,7 +718,6 @@ async function handleFile(file) {
     state.resultQuery = '';
     state.batchStarted = false;
     state.lastBatchSummary = null;
-    state.completionPulsePending = false;
     state.expanded.clear();
     initializeDestinations(parsed);
     setProgress({ visible: false });
@@ -1066,7 +1022,6 @@ async function runInspection({ searchOnly = false, routeOnly = false, forceRoute
     });
     showToast('거리점검을 중지했어요. 완료된 결과는 유지됩니다.');
   } else {
-    if (!searchOnly) state.completionPulsePending = true;
     setProgress({
       visible: true,
       title: searchOnly ? '출장지 위치 확인을 마쳤어요' : '거리점검이 완료됐어요',
@@ -1081,7 +1036,7 @@ async function runInspection({ searchOnly = false, routeOnly = false, forceRoute
   }
   renderAll();
   if (!searchOnly && (routeDone > 0 || summary.routeComplete > 0)) {
-    dom.result_overview.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    dom.result_section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
@@ -1390,7 +1345,6 @@ function resetCurrent() {
   state.expanded.clear();
   state.batchStarted = false;
   state.lastBatchSummary = null;
-  state.completionPulsePending = false;
   state.stopRequested = false;
   dom.file_input.value = '';
   dom.analysis_section.classList.add('hidden');
@@ -1577,18 +1531,9 @@ function bindEvents() {
   dom.result_metrics.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-metric-filter]');
     if (!button) return;
-    const filter = button.dataset.metricFilter;
-    if (filter === 'location') {
-      state.destinationFilter = 'needs';
-      dom.destination_filters.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item.dataset.filter === 'needs'));
-      renderDestinations();
-      dom.destination_section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
-    }
-    state.resultFilter = filter;
+    state.resultFilter = button.dataset.metricFilter;
     dom.result_filters.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item.dataset.filter === state.resultFilter));
     renderResults();
-    dom.result_section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
   dom.result_search.addEventListener('input', (event) => {
     state.resultQuery = event.target.value;
