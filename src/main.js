@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './styles.css';
-import { parseEdufineWorkbook } from './parser.js';
+import { containsSensitiveSearchText, parseEdufineWorkbook } from './parser.js';
 import { calculateRoundTrip, getApiHealth, getTmapUsage, searchPlaces } from './api.js';
 import {
   clearAllStorage,
@@ -14,6 +14,7 @@ import {
   isTmapDataFresh,
   saveDestinationMemory,
   saveRouteCache,
+  destinationStorageKey,
   saveWorkplace,
 } from './storage.js';
 import { exportResults, statusFor } from './exporter.js';
@@ -144,7 +145,7 @@ function expireStaleTmapData() {
       destination.route = null;
       destination.routeStatus = 'pending';
       destination.searchError = '';
-      delete state.destinationMemory[destination.key];
+      delete state.destinationMemory[destinationStorageKey(destination.key)];
       destinationMemoryChanged = true;
       changed = true;
       continue;
@@ -346,7 +347,7 @@ function resultRecovery(destination) {
 
 function initializeDestinations(parsed) {
   state.destinations = parsed.destinations.map((item) => {
-    const memory = state.destinationMemory[item.key] || {};
+    const memory = state.destinationMemory[destinationStorageKey(item.key)] || {};
     const remembered = memory.location || null;
     const destination = {
       ...item,
@@ -778,10 +779,9 @@ function saveDestinationLocation(destination, location, source = 'manual') {
   destination.route = null;
   destination.routeStatus = 'pending';
   destination.searchError = '';
-  state.destinationMemory[destination.key] = {
+  state.destinationMemory[destinationStorageKey(destination.key)] = {
     location: storedLocation,
     source,
-    originalName: destination.originalName,
     savedAt: destination.lastCheckedAt,
   };
   saveDestinationMemory(state.destinationMemory);
@@ -1187,15 +1187,18 @@ async function openLocationModal(mode, key = null) {
       dom.modal_kicker.textContent = `${destination.count}건의 출장에 함께 적용`;
     }
     dom.modal_title.textContent = destination.originalName;
-    query = destination.searchQuery;
+    const blockedSensitiveQuery = containsSensitiveSearchText(destination.searchQuery, destination.travelers);
+    query = blockedSensitiveQuery ? '' : destination.searchQuery;
     current = destination.location;
     const help = document.querySelector('.modal-help');
     if (help) {
-      help.textContent = state.needsQueueActive
-        ? '실제 출장지를 선택하면 거리를 자동 계산한 뒤 다음 장소로 이어집니다.'
-        : destination.searchQueryIndoorAdjusted
-          ? `원본 출장지: ${destination.originalName} · 검색할 때 층·실 정보를 제외했어요.`
-          : '검색 결과를 선택하거나 지도에서 실제 출입구를 눌러 위치를 조정할 수 있어요.';
+      help.textContent = blockedSensitiveQuery
+        ? '출장자명·전화번호·이메일·주민등록번호 형태가 포함된 검색어는 외부 지도 서비스로 보내지 않아요. 기관명·장소명·도로명주소만 입력해 주세요.'
+        : state.needsQueueActive
+          ? '실제 출장지를 선택하면 거리를 자동 계산한 뒤 다음 장소로 이어집니다.'
+          : destination.searchQueryIndoorAdjusted
+            ? `원본 출장지: ${destination.originalName} · 검색할 때 층·실 정보를 제외했어요.`
+            : '검색 결과를 선택하거나 지도에서 실제 출입구를 눌러 위치를 조정할 수 있어요.';
     }
   }
 
@@ -1244,6 +1247,14 @@ function renderCandidates() {
 
 async function performPlaceSearch(query) {
   const value = String(query || '').trim();
+  const destination = state.modal.mode === 'destination' ? getDestination(state.modal.key) : null;
+  if (containsSensitiveSearchText(value, destination?.travelers || [])) {
+    state.modal.candidates = [];
+    dom.candidate_list.innerHTML = '';
+    dom.candidate_empty.innerHTML = '<strong>개인정보가 포함된 검색어는 전송하지 않아요.</strong><span>출장자명·전화번호·이메일·주민등록번호를 빼고 기관명·장소명·도로명주소만 입력해 주세요.</span>';
+    dom.candidate_empty.classList.remove('hidden');
+    return;
+  }
   if (value.length < 2) {
     dom.candidate_empty.innerHTML = '<strong>두 글자 이상 입력해 주세요.</strong><span>학교명 전체 또는 도로명주소로 검색하면 더 정확해요.</span>';
     dom.candidate_empty.classList.remove('hidden');

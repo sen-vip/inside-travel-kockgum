@@ -1,10 +1,12 @@
 const KEYS = {
   workplace: 'insideTravelKockgum.workplace.v1',
-  destinations: 'insideTravelKockgum.destinations.v1',
+  destinations: 'insideTravelKockgum.destinations.v2',
   routes: 'insideTravelKockgum.routes.v1',
 };
 
 // TMAP API로 얻은 데이터는 24시간 이상 재사용하지 않도록 23시간에서 만료시킨다.
+// 이전 버전에서 출장지 원문이 저장 키에 남을 수 있었으므로 v1 저장소는 읽지 않고 정리한다.
+const LEGACY_DESTINATION_KEY = 'insideTravelKockgum.destinations.v1';
 export const TMAP_DATA_TTL_MS = 23 * 60 * 60 * 1000;
 export const ROUTE_CACHE_TTL_MS = TMAP_DATA_TTL_MS;
 
@@ -45,7 +47,19 @@ export function saveWorkplace(value) {
   else localStorage.removeItem(KEYS.workplace);
 }
 
+export function destinationStorageKey(value) {
+  // localStorage 키에 출장지 원문이 남지 않도록 비가역 해시 형태로 저장한다.
+  const text = String(value || '');
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `d_${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
 export function loadDestinationMemory() {
+  localStorage.removeItem(LEGACY_DESTINATION_KEY);
   const stored = load(KEYS.destinations, {});
   const fresh = {};
   for (const [key, entry] of Object.entries(stored)) {

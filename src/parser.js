@@ -36,6 +36,23 @@ function normalizeHeader(value) {
   return cleanText(value).replace(/[\s·:：()\[\]_-]/g, '');
 }
 
+
+const SENSITIVE_SEARCH_PATTERNS = [
+  /(?:^|\D)\d{6}[-\s]?[1-4]\d{6}(?:\D|$)/,
+  /(?:^|\D)(?:01[016789]|0\d{1,2})[-.\s]?\d{3,4}[-.\s]?\d{4}(?:\D|$)/,
+  /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i,
+];
+
+export function containsSensitiveSearchText(value, travelerNames = []) {
+  const text = cleanText(value);
+  if (!text) return false;
+  if (SENSITIVE_SEARCH_PATTERNS.some((pattern) => pattern.test(text))) return true;
+  return travelerNames
+    .map(cleanText)
+    .filter((name) => name.length >= 2)
+    .some((name) => text.includes(name));
+}
+
 export function normalizeDestination(value) {
   return cleanText(value)
     .replace(/[“”‘’]/g, '')
