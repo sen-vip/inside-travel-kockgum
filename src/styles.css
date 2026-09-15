@@ -414,7 +414,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 }
 
 /* v0.2.5 거리 판정 전용 결과 화면 */
-.result-surface { overflow: hidden; }
+.result-surface { overflow: visible; }
 .result-metrics.compact-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -446,7 +446,8 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 
 .result-table-wrap {
   width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
 }
 .result-table {
   width: 100%;
@@ -461,6 +462,13 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .result-table th:nth-child(6) { width: 17%; }
 .result-table th,
 .result-table td { min-width: 0; }
+.result-table thead th {
+  position: sticky;
+  top: 64px;
+  z-index: 30;
+  background: #fafbfc;
+  box-shadow: 0 1px 0 var(--slate-200);
+}
 .result-table td { padding: 14px 12px; }
 .trip-summary-cell { min-width: 0; }
 .trip-summary-cell strong,
@@ -663,6 +671,16 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .pill-action { border: 0; font: inherit; cursor: pointer; }
 .pill-action:hover { filter: brightness(.97); box-shadow: 0 0 0 2px rgba(49,89,216,.10); }
 .pill-action:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.pill-action.location-select {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #dfe6ff;
+  color: var(--blue);
+  background: #f3f6ff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: -.015em;
+}
 
 
 /* v0.2.14 맨 위로 */

@@ -646,10 +646,11 @@ function renderResults() {
   dom.result_empty.classList.toggle('hidden', rows.length > 0);
   dom.result_body.innerHTML = rows.map(({ trip, destination, status }) => {
     const recovery = resultRecovery(destination);
-    const pillKind = recovery ? 'blue' : (status.boundary ? 'purple' : (status.within ? 'amber' : (status.over ? 'neutral' : 'blue')));
+    const pillKind = recovery ? 'blue' : (status.boundary ? 'purple' : (status.within ? 'amber' : (status.over ? 'green' : 'blue')));
+    const recoveryClass = recovery?.label === '장소 선택' ? ' location-select' : '';
     const noteClass = status.note === '—' ? 'quiet' : '';
     const statusControl = recovery?.action
-      ? `<button class="pill pill-action ${pillKind}" data-action="${recovery.action}" data-key="${escapeHtml(destination?.key || trip.normalizedDestination)}" type="button" title="${escapeHtml(recovery.title)}">${escapeHtml(recovery.label)}</button>`
+      ? `<button class="pill pill-action ${pillKind}${recoveryClass}" data-action="${recovery.action}" data-key="${escapeHtml(destination?.key || trip.normalizedDestination)}" type="button" title="${escapeHtml(recovery.title)}">${escapeHtml(recovery.label)}</button>`
       : recovery
         ? `<span class="pill ${pillKind}" title="${escapeHtml(recovery.title)}">${escapeHtml(recovery.label)}</span>`
         : `<span class="pill ${pillKind}">${escapeHtml(status.displayLabel)}</span>`;
@@ -663,7 +664,7 @@ function renderResults() {
         </div>
       </td>
       <td data-label="왕복거리"><strong class="result-distance">${destination?.route ? formatDistance(destination.route.totalDistance) : '-'}</strong></td>
-      <td data-label="2km 판정">${statusControl}</td>
+      <td data-label="왕복 2km 판정">${statusControl}</td>
       <td data-label="확인사항">
         <div class="check-cell ${noteClass}">
           <span>${escapeHtml(status.note)}</span>
