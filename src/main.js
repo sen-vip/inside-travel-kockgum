@@ -288,7 +288,7 @@ function destinationStatus(destination) {
   const within = total <= 2000;
   return {
     label: `${within ? '왕복 2km 이내' : '왕복 2km 초과'}${boundary ? ' · 경계' : ''}`,
-    kind: boundary ? 'purple' : (within ? 'amber' : 'blue'),
+    kind: within ? 'amber' : 'green',
     group: boundary ? 'boundary' : (within ? 'within' : 'over'),
   };
 }
