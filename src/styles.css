@@ -190,6 +190,20 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .destination-table th:nth-child(5) { width: 16%; }
 .destination-table th:nth-child(6) { width: 13%; }
 .destination-table td:nth-child(2) { text-align: center; }
+
+/* 출장지별 거리: 페이지 스크롤 시 제목행 고정 */
+.destination-table-wrap {
+  overflow-x: clip;
+  overflow-y: visible;
+}
+.destination-table { min-width: 0; }
+.destination-table thead th {
+  position: sticky;
+  top: 64px;
+  z-index: 30;
+  background: #fafbfc;
+  box-shadow: 0 1px 0 var(--slate-200);
+}
 .cell-title { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .cell-title button { flex: 0 0 auto; width: 25px; height: 25px; border: 0; border-radius: 8px; background: var(--slate-100); color: var(--slate-600); }
 .cell-title strong { color: var(--slate-950); font-size: 13px; word-break: keep-all; }
@@ -488,6 +502,13 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .needs-row { background: #fffafa; }
 .within-row { background: #fffdf7; }
 .result-table tbody tr:hover { background: #f8faff; }
+
+
+@media (max-width: 900px) {
+  .destination-table-wrap { overflow-x: auto; overflow-y: hidden; }
+  .destination-table { min-width: 870px; }
+  .destination-table thead th { position: static; }
+}
 
 @media (max-width: 900px) {
   .result-metrics.compact-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
